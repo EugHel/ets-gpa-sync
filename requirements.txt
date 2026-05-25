@@ -1,0 +1,9 @@
+# Pflichtabhängigkeiten (nur für passwortgeschützte .knxproj-Dateien benötigt)
+cryptography>=41.0
+
+# GUI-Framework
+customtkinter>=5.2.0
+pillow>=10.0          # App-Icon-Erzeugung + Toolbar-Logo (CTkImage)
+
+# Optionale Abhängigkeiten
+tkinterdnd2>=0.3   # Drag & Drop von Dateien ins Programmfenster
