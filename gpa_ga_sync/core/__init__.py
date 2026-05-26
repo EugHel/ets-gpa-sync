@@ -3,6 +3,9 @@ from .models import EtsGroupAddress, GpaDatapoint, SyncCandidate, SyncStatus
 from .parser_ets import (
     EtsProjectPasswordRequired,
     EtsProjectReadError,
+    # Hinweis: Dieser private Import bleibt absichtlich hier —
+    # 7 Tests greifen über das core-Modul darauf zu. Bei zukünftigem
+    # Refactoring: Tests auf direkten Import aus parser_ets.py umstellen.
     _extract_group_addresses_from_xml_text,
     parse_ets_ga_export,
 )

@@ -5,8 +5,6 @@ import re
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Tuple
 
-CONF_NS = "http://service.schema.gira.de/configuration"
-
 
 def local_name(tag: str) -> str:
     if "}" in tag:

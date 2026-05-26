@@ -10,8 +10,8 @@
 - ✅ **Typsicherheit**: SyncStatus-Enum statt Magic Strings
 - ✅ **GUI**: Migration zu CustomTkinter mit Dark/Light Mode
 - ✅ **Logging**: Strukturiertes Logging mit Rotation
-- ✅ **Lizenz-Subsystem**: Vorbereitet für optionale zukünftige Features
-  (aktuell ungenutzt)
+- ✅ **Lizenz-Subsystem**: Vorbereitet für mögliche zukünftige Features
+  (aktuell deaktiviert via Feature-Flag — siehe `gpa_ga_sync/config.py`)
 
 ## 🚧 In Arbeit (auf dem Weg zu v1.0.0)
 

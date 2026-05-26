@@ -28,17 +28,22 @@ from ..core import (
     write_updated_gpa,
 )
 from .. import __version__
+from ..config import LICENSING_ENABLED
 from ..licensing import (
     LicenseManager, LicenseStatus, LicenseStorage, TrialManager,
     NullProvider, get_machine_id,
 )
 from ..log import get_logger
+from .fonts import get_fonts, TTK_BODY, TTK_BODY_BOLD
 
 _log = get_logger("gui.app")
 
 # ── Akzentfarben (identisch mit Legacy) ───────────────────────────────────────
 ACCENT      = "#42a51b"
 ACCENT_DARK = "#2f8612"
+
+# ── Externe Links ─────────────────────────────────────────────────────────────
+_LICENSE_URL = "https://github.com/EugHel/ets-gpa-sync"
 
 # ── Theme-Farbpalette ──────────────────────────────────────────────────────────
 _PALETTE: Dict[str, Dict[str, str]] = {
@@ -142,7 +147,7 @@ class _Tooltip:
             self._win, text=self._text,
             background="#2c2c2e", foreground="#f0f0f0",
             relief="flat", padx=10, pady=6,
-            font=("Segoe UI", 10), justify="left", wraplength=300,
+            font=TTK_BODY, justify="left", wraplength=300,
         ).pack()
 
     def _hide(self) -> None:
@@ -186,6 +191,9 @@ def run_gui() -> None:
     class App(BaseCTk):
         def __init__(self) -> None:
             super().__init__()
+            # Zentrale Schrift-Stufen – direkt nach Tk-Init erstellen.
+            # CTkFont skaliert automatisch mit Windows-DPI (kein manueller Eingriff).
+            self._fonts = get_fonts()
             self.title("ETS GPA GA-Sync")
             self.geometry("1420x820")
             self.minsize(980, 560)
@@ -226,14 +234,16 @@ def run_gui() -> None:
                 "new":   "Neuer GPA-Name",
             }
 
-            self._license_manager = self._init_licensing()
+            if LICENSING_ENABLED:
+                self._license_manager = self._init_licensing()
 
             self._try_set_app_icon()
             self._build_ui()
             self._apply_tree_style()
             self._setup_drop_targets()
             self._register_tooltips()
-            self._update_license_ui()
+            if LICENSING_ENABLED:
+                self._update_license_ui()
 
         @property
         def _p(self) -> Dict[str, str]:
@@ -256,8 +266,8 @@ def run_gui() -> None:
             except Exception:
                 pass
             style.configure("Treeview",
-                            rowheight=40,
-                            font=("Segoe UI", 12),
+                            rowheight=32,
+                            font=TTK_BODY,
                             background=p["row_even"],
                             fieldbackground=p["row_even"],
                             foreground=p["text"],
@@ -265,7 +275,7 @@ def run_gui() -> None:
                             borderwidth=0)
             _sep_color = p["border"]
             style.configure("Treeview.Heading",
-                            font=("Segoe UI", 10, "bold"),
+                            font=TTK_BODY_BOLD,
                             background=p["panel2"],
                             foreground=p["text"],
                             padding=(10, 9),
@@ -375,9 +385,11 @@ def run_gui() -> None:
             self.rowconfigure(1, weight=0)  # Lizenz-Banner (versteckt wenn kein Ablauf)
             self.rowconfigure(2, weight=1)  # Hauptbereich
             self.rowconfigure(3, weight=0)  # Fußzeile
-            self._build_menu()
+            if LICENSING_ENABLED:
+                self._build_menu()
             self._build_toolbar()
-            self._build_expired_banner()
+            if LICENSING_ENABLED:
+                self._build_expired_banner()
             self._build_main_area()
             self._build_footer()
 
@@ -412,24 +424,26 @@ def run_gui() -> None:
                 self._logo_canvas = logo
 
             ctk.CTkLabel(toolbar, text="ETS GPA GA-Sync",
-                         font=ctk.CTkFont("Segoe UI", 26, "bold")).grid(
+                         font=self._fonts["large"]).grid(
                 row=0, column=1, padx=(0, 4), sticky="w")
 
             # Lizenz-Status-Indikator (klickbar, öffnet Lizenz-Dialog)
-            self._license_btn = ctk.CTkButton(
-                toolbar, text="…", width=130, height=30, corner_radius=6,
-                fg_color="transparent", border_width=1,
-                border_color=("gray60", "gray45"),
-                text_color=("gray15", "gray85"),
-                hover_color=("gray85", "gray25"),
-                font=ctk.CTkFont("Segoe UI", 11),
-                command=self._open_license_dialog,
-            )
-            self._license_btn.grid(row=0, column=3, padx=(0, 12), sticky="e")
+            # Nur sichtbar wenn LICENSING_ENABLED == True (config.py)
+            if LICENSING_ENABLED:
+                self._license_btn = ctk.CTkButton(
+                    toolbar, text="…", width=130, height=30, corner_radius=6,
+                    fg_color="transparent", border_width=1,
+                    border_color=("gray60", "gray45"),
+                    text_color=("gray15", "gray85"),
+                    hover_color=("gray85", "gray25"),
+                    font=self._fonts["body"],
+                    command=self._open_license_dialog,
+                )
+                self._license_btn.grid(row=0, column=3, padx=(0, 12), sticky="e")
 
             # Theme-Toggle: ☀ = Light, ☾ = Dark
             ctk.CTkLabel(toolbar, text="☾",
-                         font=ctk.CTkFont("Segoe UI", 13),
+                         font=self._fonts["normal"],
                          text_color="gray55").grid(row=0, column=4, padx=(0, 2), sticky="e")
             self._theme_switch = ctk.CTkSwitch(
                 toolbar, text="", width=46,
@@ -441,7 +455,7 @@ def run_gui() -> None:
                 self._theme_switch.select()
             self._theme_switch.grid(row=0, column=5, padx=(0, 2), sticky="e")
             ctk.CTkLabel(toolbar, text="☀",
-                         font=ctk.CTkFont("Segoe UI", 13),
+                         font=self._fonts["normal"],
                          text_color="gray55").grid(row=0, column=6, padx=(0, 10), sticky="e")
 
             ctk.CTkButton(toolbar, text="?", width=28, height=28, corner_radius=14,
@@ -465,11 +479,12 @@ def run_gui() -> None:
             return mgr
 
         def _build_menu(self) -> None:
-            """Erstellt die Menüleiste mit Hilfe → Lizenz verwalten."""
+            """Erstellt die Menüleiste. Lizenz-Eintrag nur wenn LICENSING_ENABLED."""
             menubar = tk.Menu(self, tearoff=0)
             help_menu = tk.Menu(menubar, tearoff=0)
-            help_menu.add_command(label="Lizenz verwalten …", command=self._open_license_dialog)
-            help_menu.add_separator()
+            if LICENSING_ENABLED:
+                help_menu.add_command(label="Lizenz verwalten …", command=self._open_license_dialog)
+                help_menu.add_separator()
             help_menu.add_command(label="Hilfe / Über …", command=self.show_help)
             menubar.add_cascade(label="Hilfe", menu=help_menu)
             self.configure(menu=menubar)
@@ -487,7 +502,7 @@ def run_gui() -> None:
             self._banner_label = ctk.CTkLabel(
                 self._banner_frame,
                 text="",
-                font=ctk.CTkFont("Segoe UI", 12, "bold"),
+                font=self._fonts["body_bold"],
                 text_color=("#7a4000", "#ffb84d"),
             )
             self._banner_label.grid(row=0, column=0, padx=16, pady=7, sticky="w")
@@ -497,7 +512,7 @@ def run_gui() -> None:
                 text="Lizenz aktivieren",
                 width=150, height=28, corner_radius=5,
                 fg_color=ACCENT, hover_color=ACCENT_DARK, text_color="white",
-                font=ctk.CTkFont("Segoe UI", 11, "bold"),
+                font=self._fonts["body_bold"],
                 command=self._open_license_dialog,
             ).grid(row=0, column=1, padx=(0, 12), pady=6, sticky="e")
 
@@ -540,7 +555,7 @@ def run_gui() -> None:
                 )
                 if hasattr(self, "_banner_frame") and hasattr(self, "_banner_label"):
                     self._banner_label.configure(
-                        text="⚠  Trial abgelaufen – bitte Lizenz erwerben unter https://example.com"
+                        text=f"⚠  Trial abgelaufen – bitte Lizenz erwerben unter {_LICENSE_URL}"
                     )
                     self._banner_frame.grid()
 
@@ -591,11 +606,11 @@ def run_gui() -> None:
                 status_text, status_color = "–  Kein Lizenzstatus", "gray"
 
             ctk.CTkLabel(dialog, text="Lizenzstatus",
-                         font=ctk.CTkFont("Segoe UI", 15, "bold")).grid(
+                         font=self._fonts["normal"]).grid(
                 row=0, column=0, padx=24, pady=(20, 4), sticky="w")
 
             ctk.CTkLabel(dialog, text=status_text,
-                         font=ctk.CTkFont("Segoe UI", 12),
+                         font=self._fonts["body"],
                          text_color=status_color).grid(
                 row=1, column=0, padx=24, pady=(0, 16), sticky="w")
 
@@ -605,16 +620,16 @@ def run_gui() -> None:
 
             # Lizenz-Blob-Eingabe
             ctk.CTkLabel(dialog, text="Lizenzschlüssel / Lizenz-Blob einfügen:",
-                         font=ctk.CTkFont("Segoe UI", 11)).grid(
+                         font=self._fonts["body"]).grid(
                 row=3, column=0, padx=24, pady=(0, 6), sticky="w")
 
-            key_text = tk.Text(dialog, height=6, font=("Segoe UI", 9),
+            key_text = tk.Text(dialog, height=6, font=TTK_BODY,
                                relief="solid", bd=1, wrap="word")
             key_text.grid(row=4, column=0, padx=24, pady=(0, 10), sticky="ew")
 
             msg_var = tk.StringVar()
             msg_label = ctk.CTkLabel(dialog, textvariable=msg_var,
-                                     font=ctk.CTkFont("Segoe UI", 10),
+                                     font=self._fonts["body"],
                                      text_color=("gray30", "gray70"))
             msg_label.grid(row=5, column=0, padx=24, pady=(0, 4), sticky="w")
 
@@ -662,8 +677,8 @@ def run_gui() -> None:
         def _build_main_area(self) -> None:
             main = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
             main.grid(row=2, column=0, sticky="nsew", padx=18, pady=(8, 14))
-            main.columnconfigure(0, weight=1, minsize=820)
-            main.columnconfigure(1, weight=0, minsize=340)
+            main.columnconfigure(0, weight=1, minsize=600)
+            main.columnconfigure(1, weight=0, minsize=300)
             main.rowconfigure(0, weight=1)
 
             workspace = ctk.CTkFrame(main, corner_radius=0, fg_color="transparent")
@@ -693,24 +708,26 @@ def run_gui() -> None:
             card.columnconfigure(0, weight=1)
 
             ctk.CTkLabel(card, text=title,
-                         font=ctk.CTkFont("Segoe UI", 12, "bold"),
+                         font=self._fonts["normal"],
                          anchor="w").grid(row=0, column=0, sticky="w", padx=12, pady=(8, 4))
 
+            # Keine feste height= und kein grid_propagate(False) → Container wächst bei
+            # hoher DPI-Skalierung mit dem Text mit (verhindert abgeschnittene Texte).
             drop_zone = ctk.CTkFrame(card, corner_radius=6, border_width=1,
                                      border_color=(ACCENT_DARK, ACCENT),
-                                     fg_color=("gray96", "gray18"), height=52)
+                                     fg_color=("gray96", "gray18"))
             drop_zone.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 4))
-            drop_zone.grid_propagate(False)
             drop_zone.columnconfigure(0, weight=1)
             ctk.CTkLabel(drop_zone, text=drop_text,
                          text_color=("gray45", "gray60"),
-                         font=ctk.CTkFont("Segoe UI", 12),
-                         anchor="center").grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+                         font=self._fonts["body"],
+                         anchor="center",
+                         wraplength=200).grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
 
             ctk.CTkLabel(card, textvariable=var,
                          text_color=("gray35", "gray65"),
-                         font=ctk.CTkFont("Segoe UI", 12),
-                         wraplength=340, anchor="w").grid(
+                         font=self._fonts["body"],
+                         wraplength=200, anchor="w").grid(
                 row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
 
             ctk.CTkButton(card, text=button_text,
@@ -718,7 +735,7 @@ def run_gui() -> None:
                           border_color=("gray60", "gray45"),
                           text_color=("gray15", "gray85"),
                           hover_color=("gray88", "gray25"),
-                          font=ctk.CTkFont("Segoe UI", 12, "bold"),
+                          font=self._fonts["body_bold"],
                           command=command).grid(
                 row=3, column=0, sticky="ew", padx=12, pady=(0, 10))
 
@@ -728,10 +745,10 @@ def run_gui() -> None:
             box = self._card(parent, 0, pady=(0, 8))
             box.columnconfigure(0, weight=1)
             box.columnconfigure(1, weight=1)
-            box.columnconfigure(2, weight=0, minsize=230)
+            box.columnconfigure(2, weight=0, minsize=160)
 
             ctk.CTkLabel(box, text="Datenquellen importieren",
-                         font=ctk.CTkFont("Segoe UI", 15, "bold"),
+                         font=self._fonts["normal"],
                          anchor="w").grid(row=0, column=0, columnspan=3,
                                           sticky="w", padx=14, pady=(10, 4))
 
@@ -740,16 +757,16 @@ def run_gui() -> None:
             gpa_holder.columnconfigure(0, weight=1)
             self.gpa_drop = self._build_upload_box(
                 gpa_holder, "GPA-Projekt",
-                "☁  .gpa-Datei hier ablegen oder auswählen",
+                "☁  .gpa hier ablegen",
                 self.gpa_var, ".gpa auswählen…", self.pick_gpa)
 
             ets_holder = ctk.CTkFrame(box, corner_radius=0, fg_color="transparent")
             ets_holder.grid(row=1, column=1, sticky="nsew", padx=(0, 8), pady=(0, 10))
             ets_holder.columnconfigure(0, weight=1)
             self.ets_drop = self._build_upload_box(
-                ets_holder, "ETS-Gruppenadressen (.xml/.knxproj)",
-                "☁  .xml / .knxproj Datei hier ablegen oder auswählen",
-                self.ets_var, ".xml / .knxproj auswählen…", self.pick_ets)
+                ets_holder, "ETS-Gruppenadressen",
+                "☁  .xml/.knxproj hier ablegen",
+                self.ets_var, ".xml/.knxproj wählen…", self.pick_ets)
 
             action = ctk.CTkFrame(box, corner_radius=0, fg_color="transparent")
             action.grid(row=1, column=2, sticky="sew", padx=(0, 14), pady=(0, 10))
@@ -758,8 +775,8 @@ def run_gui() -> None:
                 action, text="Analysieren",
                 fg_color=ACCENT, hover_color=ACCENT_DARK,
                 text_color="white",
-                font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                width=230, height=34, command=self.analyze)
+                font=self._fonts["body_bold"],
+                width=140, height=30, command=self.analyze)
             self.analyze_button.grid(row=0, column=0, sticky="ew")
 
         def _build_kpi_row(self, parent) -> None:
@@ -769,10 +786,10 @@ def run_gui() -> None:
                 row.columnconfigure(i, weight=1, uniform="kpi")
 
             kpi_defs = [
-                ("gpa", "GPA-Datenpunkte",    self.kpi_vars["gpa"],      "#009b68"),
-                ("ets", "ETS-Gruppenadressen", self.kpi_vars["ets"],      "#009b68"),
-                ("⚠",  "Unterschiede",         self.kpi_vars["diff"],     "#f59e0b"),
-                ("✓",  "Ausgewählt",            self.kpi_vars["selected"], "#16a34a"),
+                ("gpa", "GPA-Datenpunkte", self.kpi_vars["gpa"],      "#009b68"),
+                ("ets", "ETS-Adressen",    self.kpi_vars["ets"],      "#009b68"),
+                ("⚠",  "Unterschiede",     self.kpi_vars["diff"],     "#f59e0b"),
+                ("✓",  "Ausgewählt",        self.kpi_vars["selected"], "#16a34a"),
             ]
             self._kpi_canvases: List[tk.Canvas] = []
             for col, (icon, title, var, color) in enumerate(kpi_defs):
@@ -787,15 +804,16 @@ def run_gui() -> None:
                     self._kpi_canvases.append(icon_widget)
                 else:
                     icon_widget = ctk.CTkLabel(card, text=icon,
-                                               font=ctk.CTkFont("Segoe UI", 20, "bold"),
+                                               font=self._fonts["large"],
                                                text_color=color, width=44)
                 icon_widget.grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
                 ctk.CTkLabel(card, text=title,
-                             font=ctk.CTkFont("Segoe UI", 12),
+                             font=self._fonts["body"],
                              anchor="w").grid(
                     row=0, column=1, sticky="w", padx=(0, 10), pady=(8, 0))
+                # KPI-Zahlen: large (16pt bold) – prominent und DPI-skalierbar
                 ctk.CTkLabel(card, textvariable=var,
-                             font=ctk.CTkFont("Segoe UI", 20, "bold"),
+                             font=self._fonts["large"],
                              anchor="w").grid(
                     row=1, column=1, sticky="w", padx=(0, 10), pady=(0, 8))
 
@@ -805,7 +823,7 @@ def run_gui() -> None:
             center.rowconfigure(2, weight=1)
 
             ctk.CTkLabel(center, text="Datenpunkte – Änderungen",
-                         font=ctk.CTkFont("Segoe UI", 15, "bold"),
+                         font=self._fonts["normal"],
                          anchor="w").grid(row=0, column=0, sticky="w",
                                           padx=16, pady=(12, 6))
 
@@ -818,15 +836,15 @@ def run_gui() -> None:
             _btn = dict(fg_color="transparent", border_width=1,
                         border_color=("gray70", "gray40"),
                         text_color=("gray15", "gray85"),
-                        font=ctk.CTkFont("Segoe UI", 12), height=34)
+                        font=self._fonts["body"], height=30)
 
             self.select_all_button = ctk.CTkButton(
-                tbar, text="✓  Alle sichtbaren auswählen",
+                tbar, text="✓  Alle auswählen",
                 command=self.select_all, **_btn)
             self.select_all_button.grid(row=0, column=0, sticky="w", padx=(0, 8))
 
             self.deselect_all_button = ctk.CTkButton(
-                tbar, text="✕  Alle sichtbaren abwählen",
+                tbar, text="✕  Alle abwählen",
                 command=self.deselect_all, **_btn)
             self.deselect_all_button.grid(row=0, column=1, sticky="w", padx=(0, 8))
 
@@ -848,13 +866,13 @@ def run_gui() -> None:
             # Lupe (sichtbar wenn Suchfeld leer)
             self._search_icon = ctk.CTkLabel(
                 self._search_frame, text="🔍", width=28,
-                font=ctk.CTkFont("Segoe UI", 16))
+                font=self._fonts["large"])
             self._search_icon.grid(row=0, column=0, padx=(5, 0), sticky="w")
 
             # Clear-Button (sichtbar wenn Text vorhanden)
             self._search_clear = ctk.CTkLabel(
                 self._search_frame, text="✕", width=28,
-                font=ctk.CTkFont("Segoe UI", 14),
+                font=self._fonts["normal"],
                 text_color=("gray40", "gray65"), cursor="hand2")
             self._search_clear.bind("<Button-1>", lambda _: self.filter_var.set(""))
             self._search_clear.bind("<Enter>",
@@ -865,7 +883,7 @@ def run_gui() -> None:
             self.search_entry = ctk.CTkEntry(
                 self._search_frame, textvariable=self.filter_var,
                 placeholder_text="Suchen…",
-                font=ctk.CTkFont("Segoe UI", 12),
+                font=self._fonts["body"],
                 border_width=0, fg_color="transparent")
             self.search_entry.grid(row=0, column=1, sticky="ew", padx=(2, 4), pady=2)
 
@@ -885,11 +903,11 @@ def run_gui() -> None:
                 lambda _: self._search_frame.configure(border_color=("gray60", "gray45")))
 
             self.sync_button = ctk.CTkButton(
-                tbar, text="Synchronisieren + speichern",
+                tbar, text="Synchronisieren",
                 fg_color=ACCENT, hover_color=ACCENT_DARK,
                 text_color="white",
-                font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                width=230, height=34, state="disabled", command=self.sync)
+                font=self._fonts["body_bold"],
+                width=150, height=30, state="disabled", command=self.sync)
             self.sync_button.grid(row=0, column=4, sticky="e")
             center.bind("<Configure>", self._on_center_resize)
 
@@ -943,30 +961,30 @@ def run_gui() -> None:
             right = self._card(parent, 0, column=1, sticky="nsew")
             right.columnconfigure(0, weight=1)
             right.grid_propagate(False)
-            right.configure(width=340)
+            right.configure(width=300)
 
             ctk.CTkLabel(right, text="Eigenschaften",
-                         font=ctk.CTkFont("Segoe UI", 15, "bold"),
+                         font=self._fonts["normal"],
                          anchor="w").grid(row=0, column=0, sticky="w",
-                                          padx=16, pady=(18, 4))
+                                          padx=16, pady=(14, 4))
 
             form = ctk.CTkFrame(right, corner_radius=0, fg_color="transparent")
             form.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 8))
             form.columnconfigure(0, weight=1)
 
             ctk.CTkLabel(form, text="Ausgewählter Datenpunkt",
-                         font=ctk.CTkFont("Segoe UI", 12, "bold"),
+                         font=self._fonts["normal"],
                          anchor="w").grid(row=0, column=0, sticky="w", pady=(0, 4))
 
             def add_field(label: str, var_name: str, readonly: bool = True,
                           row: int = 0) -> ctk.CTkEntry:
                 ctk.CTkLabel(form, text=label, text_color=("gray30", "gray65"),
-                             font=ctk.CTkFont("Segoe UI", 12),
-                             anchor="w").grid(row=row, column=0, sticky="w", pady=(8, 2))
+                             font=self._fonts["body"],
+                             anchor="w").grid(row=row, column=0, sticky="w", pady=(6, 1))
                 entry = ctk.CTkEntry(
                     form, textvariable=self.detail_vars[var_name],
                     state="readonly" if readonly else "normal",
-                    font=ctk.CTkFont("Segoe UI", 12),
+                    font=self._fonts["body"],
                     text_color=("#1a1a1a", "#e8e8e8"))
                 entry.grid(row=row + 1, column=0, sticky="ew")
                 return entry
@@ -989,38 +1007,40 @@ def run_gui() -> None:
                 self._info_frame,
                 text='ⓘ  Der neue Name kann hier beliebig angepasst werden, bevor die Synchronisation durchgeführt wird.',
                 bg=p["info_bg"], fg=p["info_fg"],
-                font=("Segoe UI", 10), anchor="w", justify="left", wraplength=280)
+                font=TTK_BODY, anchor="w", justify="left", wraplength=260)
             self._info_label.pack(fill="x", padx=10, pady=10)
 
         def _build_footer(self) -> None:
             p = self._p
-            footer = tk.Frame(self, bg=p["bg"], height=34)
+            # Keine feste height= und kein grid_propagate(False) → Fußzeile passt sich
+            # der skalierten Schrift an (verhindert abgeschnittene Texte bei 150%/200%).
+            footer = tk.Frame(self, bg=p["bg"])
             footer.grid(row=3, column=0, sticky="ew")
-            footer.grid_propagate(False)
             footer.columnconfigure(0, weight=1)
             self._footer_frame = footer
 
+            # TTK_BODY (12pt Segoe UI) – DPI-skaliert über native Tk-Punktgröße
             self._status_label = tk.Label(
                 footer, textvariable=self.status_var,
-                bg=p["bg"], fg=p["text"], anchor="w", font=("Segoe UI", 10))
-            self._status_label.grid(row=0, column=0, sticky="nsew", padx=12)
+                bg=p["bg"], fg=p["text"], anchor="w", font=TTK_BODY)
+            self._status_label.grid(row=0, column=0, sticky="nsew", padx=12, pady=5)
 
             self.progress_bar = ttk.Progressbar(
-                footer, mode="indeterminate", length=160,
+                footer, mode="indeterminate", length=140,
                 style="Sync.Horizontal.TProgressbar")
-            self.progress_bar.grid(row=0, column=1, padx=(0, 8), pady=4)
+            self.progress_bar.grid(row=0, column=1, padx=(0, 8), pady=5)
             self.progress_bar.grid_remove()
 
             self._hint_label = tk.Label(
                 footer,
-                text="Name bearbeiten: Doppelklick/F2 | Zeilen kopieren: Rechtsklick oder Strg+C",
-                bg=p["bg"], fg=p["muted"], font=("Segoe UI", 10))
-            self._hint_label.grid(row=0, column=2, sticky="e", padx=12)
+                text="Bearbeiten: Doppelklick/F2 | Kopieren: Rechtsklick / Strg+C",
+                bg=p["bg"], fg=p["muted"], font=TTK_BODY)
+            self._hint_label.grid(row=0, column=2, sticky="e", padx=12, pady=5)
 
             self._version_label = tk.Label(
                 footer, text=f"v{__version__}",
-                bg=p["bg"], fg=p["muted"], font=("Segoe UI", 10))
-            self._version_label.grid(row=0, column=3, sticky="e", padx=(0, 12))
+                bg=p["bg"], fg=p["muted"], font=TTK_BODY)
+            self._version_label.grid(row=0, column=3, sticky="e", padx=(0, 12), pady=5)
 
         # ── Drag & Drop ────────────────────────────────────────────────────────
 
@@ -1128,17 +1148,19 @@ def run_gui() -> None:
             if not hasattr(self, "sync_button"):
                 return
             width = getattr(event, "width", 0) or 0
-            if width < 620:
-                self.sync_button.configure(text="Sync + speichern")
+            if width < 500:
+                # Sehr schmales Layout (z.B. 175-200% DPI auf kleinem Monitor)
+                self.sync_button.configure(text="Sync")
                 if hasattr(self, "select_all_button"):
-                    self.select_all_button.configure(text="Auswählen")
+                    self.select_all_button.configure(text="Wählen")
                     self.deselect_all_button.configure(text="Abwählen")
                     self.csv_button.configure(text="CSV")
             else:
-                self.sync_button.configure(text="Synchronisieren + speichern")
+                # Normales Layout
+                self.sync_button.configure(text="Synchronisieren")
                 if hasattr(self, "select_all_button"):
-                    self.select_all_button.configure(text="✓  Alle sichtbaren auswählen")
-                    self.deselect_all_button.configure(text="✕  Alle sichtbaren abwählen")
+                    self.select_all_button.configure(text="✓  Alle auswählen")
+                    self.deselect_all_button.configure(text="✕  Alle abwählen")
                     self.csv_button.configure(text="CSV-Export")
 
         # ── Tabellen-Spalten ───────────────────────────────────────────────────
@@ -1464,7 +1486,7 @@ def run_gui() -> None:
                 return
             x, y, w, h = bbox
             p = self._p
-            entry = tk.Entry(self.tree, font=("Segoe UI", 12), bd=1, relief="solid",
+            entry = tk.Entry(self.tree, font=TTK_BODY, bd=1, relief="solid",
                              bg=p["entry_bg"], fg=p["text"], insertbackground=p["text"])
             entry.insert(0, c.new_name)
             entry.select_range(0, "end")
