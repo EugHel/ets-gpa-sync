@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ETS GPA GA-Sync Tool – Haupteinstiegspunkt
+ETS GPA Sync Tool – Haupteinstiegspunkt
 """
 import sys
 

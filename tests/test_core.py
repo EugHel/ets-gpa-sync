@@ -1,5 +1,5 @@
 """
-Unit-Tests für die Kernlogik des ETS GPA GA-Sync Tools.
+Unit-Tests für die Kernlogik des ETS GPA Sync Tools.
 Getestet werden ausschließlich reine Funktionen ohne GUI oder Datei-I/O.
 """
 import os

@@ -111,9 +111,9 @@ def _save_config(cfg: Dict[str, str]) -> None:
 class _Tooltip:
     """Zeigt einen Hilfetext nach kurzem Hover über einem Widget."""
 
-    def __init__(self, widget: tk.Widget, text: str, delay: int = 700) -> None:
+    def __init__(self, widget: tk.Widget, text, delay: int = 700) -> None:
         self._widget = widget
-        self._text = text
+        self._get_text = text if callable(text) else lambda: text
         self._delay = delay
         self._job: Optional[str] = None
         self._win: Optional[tk.Toplevel] = None
@@ -144,7 +144,7 @@ class _Tooltip:
         self._win.wm_geometry(f"+{x}+{y}")
         self._win.wm_attributes("-topmost", True)
         tk.Label(
-            self._win, text=self._text,
+            self._win, text=self._get_text(),
             background="#2c2c2e", foreground="#f0f0f0",
             relief="flat", padx=10, pady=6,
             font=TTK_BODY, justify="left", wraplength=300,
@@ -163,6 +163,17 @@ def _shorten_path(path: str, max_len: int = 72) -> str:
         return path
     p = Path(path)
     return f".../{p.parent.name}/{p.name}"
+
+
+def _truncate_path_middle(path: str, max_chars: int = 45) -> str:
+    """Kürzt einen langen Pfad in der Mitte: Anfang und Dateiname bleiben sichtbar."""
+    if not path or len(path) <= max_chars:
+        return path
+    name = Path(path).name
+    keep_start = max_chars - len(name) - 4  # 4 = len(" ... ")
+    if keep_start < 4:
+        return f"…{name}"
+    return f"{path[:keep_start]} … {name}"
 
 
 def run_gui() -> None:
@@ -194,9 +205,9 @@ def run_gui() -> None:
             # Zentrale Schrift-Stufen – direkt nach Tk-Init erstellen.
             # CTkFont skaliert automatisch mit Windows-DPI (kein manueller Eingriff).
             self._fonts = get_fonts()
-            self.title("ETS GPA GA-Sync")
+            self.title("ETS GPA Sync")
             self.geometry("1420x820")
-            self.minsize(980, 560)
+            self.minsize(1050, 600)
 
             self._theme_mode: str = _initial_theme
 
@@ -231,7 +242,7 @@ def run_gui() -> None:
                 "status":"Status",
                 "ga":    "GA",
                 "old":   "Aktueller GPA-Name",
-                "new":   "Neuer GPA-Name",
+                "new":   "Neuer GPA-Name aus ETS",
             }
 
             if LICENSING_ENABLED:
@@ -423,7 +434,7 @@ def run_gui() -> None:
                         logo.create_rectangle(x, y - 2, x + 3, y + 2, fill=ACCENT, outline=ACCENT)
                 self._logo_canvas = logo
 
-            ctk.CTkLabel(toolbar, text="ETS GPA GA-Sync",
+            ctk.CTkLabel(toolbar, text="ETS GPA Sync",
                          font=self._fonts["large"]).grid(
                 row=0, column=1, padx=(0, 4), sticky="w")
 
@@ -724,11 +735,15 @@ def run_gui() -> None:
                          anchor="center",
                          wraplength=200).grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
 
-            ctk.CTkLabel(card, textvariable=var,
-                         text_color=("gray35", "gray65"),
-                         font=self._fonts["body"],
-                         wraplength=200, anchor="w").grid(
-                row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
+            _path_display = tk.StringVar()
+            var.trace_add("write", lambda *_: _path_display.set(
+                _truncate_path_middle(var.get())))
+            _path_lbl = ctk.CTkLabel(card, textvariable=_path_display,
+                                     text_color=("gray35", "gray65"),
+                                     font=self._fonts["body"],
+                                     anchor="w")
+            _path_lbl.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
+            _Tooltip(_path_lbl, lambda v=var: v.get() or "")
 
             ctk.CTkButton(card, text=button_text,
                           fg_color="transparent", border_width=1,
@@ -920,7 +935,7 @@ def run_gui() -> None:
             self.tree = ttk.Treeview(table_frame, columns=cols,
                                      show="tree headings", selectmode="extended")
             self._refresh_headings()
-            self.tree.column("#0",     width=58,  minwidth=58,  anchor="center", stretch=False)
+            self.tree.column("#0",     width=70,  minwidth=66,  anchor="center", stretch=False)
             self.tree.column("status", width=120, minwidth=100, anchor="w",      stretch=False)
             self.tree.column("ga",     width=100, minwidth=90,  anchor="w",      stretch=False)
             self.tree.column("old",    width=300, minwidth=180, anchor="w",      stretch=True)
@@ -1208,7 +1223,7 @@ def run_gui() -> None:
         # ── Hilfe ──────────────────────────────────────────────────────────────
 
         def show_help(self) -> None:
-            messagebox.showinfo("Hilfe – ETS GPA GA-Sync",
+            messagebox.showinfo("Hilfe – ETS GPA Sync",
                 'Zweck:\n'
                 'Dieses Tool übernimmt Gruppenadressnamen aus einem ETS-Export in ein GPA-Projekt. '
                 'Synchronisiert wird nur in Richtung ETS → GPA.\n\n'
@@ -1564,7 +1579,7 @@ def run_gui() -> None:
 
         def _clipboard_rows(self, iids: Sequence[str]) -> List[List[str]]:
             rows: List[List[str]] = [
-                ["Sync", "Status", "GA", "Aktueller GPA-Name", "Neuer GPA-Name", "Datei im GPA"]]
+                ["Sync", "Status", "GA", "Aktueller GPA-Name", "Neuer GPA-Name aus ETS", "Datei im GPA"]]
             for iid in iids:
                 try:
                     c = self.candidates[int(iid)]

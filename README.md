@@ -1,4 +1,4 @@
-# ETS GPA GA-Sync
+# ETS GPA Sync
 
 > Synchronisiere Gruppenadressen zwischen KNX ETS und Gira GPA — schnell, sicher, kostenlos.
 

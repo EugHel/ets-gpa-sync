@@ -1,4 +1,4 @@
-"""Zentrale Schrift-Definitionen für ETS GPA GA-Sync.
+"""Zentrale Schrift-Definitionen für ETS GPA Sync.
 
 Liest Basis-Größen und Skalierungsfaktor aus config.py.
 CustomTkinter skaliert zusätzlich automatisch mit Windows-DPI.
@@ -22,7 +22,7 @@ def _scaled(base_size: int) -> int:
 def get_fonts() -> dict:
     """Gibt die Schrift-Stufen zurück. Einmal beim Start aufrufen."""
     return {
-        # Toolbar-Titel "ETS GPA GA-Sync"
+        # Toolbar-Titel "ETS GPA Sync"
         "large":     ctk.CTkFont(size=_scaled(config.FONT_SIZE_TITLE),  weight="bold"),
         # Sektion-Header ("Datenquellen importieren" u.ä.)
         "normal":    ctk.CTkFont(size=_scaled(config.FONT_SIZE_HEADER), weight="bold"),

@@ -1,5 +1,5 @@
 """
-Erzeugt das App-Icon fuer ETS GPA GA-Sync.
+Erzeugt das App-Icon fuer ETS GPA Sync.
 Konzept: Datenfluss zwischen zwei Datenpunkt-Sammlungen
   Links:  Kreis (Outline) mit 3 gruenen Punkten = GPA-Datenpunkte
   Mitte:  Pfeil (3 Dots + Spitze) = Synchronisation
