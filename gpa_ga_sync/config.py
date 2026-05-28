@@ -26,9 +26,16 @@ LICENSING_ENABLED = False
 # Nach Änderung: Tool neu starten.
 UI_SCALE_FACTOR = 1.0
 
-# Basis-Schriftgrößen (in pt, vor Multiplikation mit UI_SCALE_FACTOR)
-FONT_SIZE_TITLE  = 26   # Toolbar-Titel "ETS GPA Sync"
-FONT_SIZE_HEADER = 14   # Sektion-Header ("Datenquellen importieren")
-FONT_SIZE_BODY   = 14   # Standard-Text, Labels, Drop-Zones, Tabelle
-FONT_SIZE_SMALL  = 10   # Statusleiste, Captions
-FONT_SIZE_KPI    = 20   # Große KPI-Zahlen
+# --- Allgemeine Schrift-Stufen ---
+FONT_SIZE_TITLE    = 26   # Toolbar-Titel "ETS GPA Sync"
+FONT_SIZE_HEADER   = 16   # Sektion-Header ("Datenquellen importieren")
+FONT_SIZE_SUBHEADER = 14  # Karten-Titel ("GPA-Projekt"), "Eigenschaften"
+FONT_SIZE_BODY     = 14   # Standard-Text, Buttons, Drop-Zones
+FONT_SIZE_SMALL    = 10   # Statusleiste, Pfad-Anzeige, Captions
+FONT_SIZE_KPI      = 20   # Große KPI-Zahlen
+
+# --- Einzeln einstellbare Spezial-Elemente ---
+FONT_SIZE_TABLE_HEADER   = 11   # Tabellen-Spaltenköpfe (Sync, Status, GA, ...)
+FONT_SIZE_TABLE_BODY     = 11   # Tabellen-Datenzeilen
+FONT_SIZE_INFOBOX        = 10   # Info-Box rechts ("Der neue Name kann ...")
+FONT_SIZE_PROPERTY_LABEL = 14   # Eigenschaften-Feld-Labels (Status, GA, ...)

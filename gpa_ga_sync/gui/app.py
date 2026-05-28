@@ -34,7 +34,8 @@ from ..licensing import (
     NullProvider, get_machine_id,
 )
 from ..log import get_logger
-from .fonts import get_fonts, TTK_BODY, TTK_BODY_BOLD, TTK_SMALL
+from .fonts import (get_fonts, TTK_BODY, TTK_BODY_BOLD, TTK_SMALL,
+                    TTK_TABLE_HEADER, TTK_TABLE_BODY, TTK_INFOBOX)
 
 _log = get_logger("gui.app")
 
@@ -278,7 +279,7 @@ def run_gui() -> None:
                 pass
             style.configure("Treeview",
                             rowheight=32,
-                            font=TTK_BODY,
+                            font=TTK_TABLE_BODY,
                             background=p["row_even"],
                             fieldbackground=p["row_even"],
                             foreground=p["text"],
@@ -286,7 +287,7 @@ def run_gui() -> None:
                             borderwidth=0)
             _sep_color = p["border"]
             style.configure("Treeview.Heading",
-                            font=TTK_BODY_BOLD,
+                            font=TTK_TABLE_HEADER,
                             background=p["panel2"],
                             foreground=p["text"],
                             padding=(10, 9),
@@ -719,7 +720,7 @@ def run_gui() -> None:
             card.columnconfigure(0, weight=1)
 
             ctk.CTkLabel(card, text=title,
-                         font=self._fonts["normal"],
+                         font=self._fonts["subheader"],
                          anchor="w").grid(row=0, column=0, sticky="w", padx=12, pady=(8, 4))
 
             # Keine feste height= und kein grid_propagate(False) → Container wächst bei
@@ -978,7 +979,7 @@ def run_gui() -> None:
             right.configure(width=300)
 
             ctk.CTkLabel(right, text="Eigenschaften",
-                         font=self._fonts["normal"],
+                         font=self._fonts["subheader"],
                          anchor="w").grid(row=0, column=0, sticky="w",
                                           padx=16, pady=(14, 4))
 
@@ -987,18 +988,18 @@ def run_gui() -> None:
             form.columnconfigure(0, weight=1)
 
             ctk.CTkLabel(form, text="Ausgewählter Datenpunkt",
-                         font=self._fonts["normal"],
+                         font=self._fonts["subheader"],
                          anchor="w").grid(row=0, column=0, sticky="w", pady=(0, 4))
 
             def add_field(label: str, var_name: str, readonly: bool = True,
                           row: int = 0) -> ctk.CTkEntry:
                 ctk.CTkLabel(form, text=label, text_color=("gray30", "gray65"),
-                             font=self._fonts["body"],
+                             font=self._fonts["property_label"],
                              anchor="w").grid(row=row, column=0, sticky="w", pady=(6, 1))
                 entry = ctk.CTkEntry(
                     form, textvariable=self.detail_vars[var_name],
                     state="readonly" if readonly else "normal",
-                    font=self._fonts["body"],
+                    font=self._fonts["property_label"],
                     text_color=("#1a1a1a", "#e8e8e8"))
                 entry.grid(row=row + 1, column=0, sticky="ew")
                 return entry
@@ -1006,8 +1007,8 @@ def run_gui() -> None:
             add_field("Status",               "status", row=1)
             add_field("Gruppenadresse",        "ga",     row=3)
             add_field("Quelle",                "source", row=5)
-            add_field("Aktueller Name (GPA)",  "old",    row=7)
-            self.detail_new_entry = add_field("Neuer Name (GPA)", "new",
+            add_field("Aktueller GPA-Name",      "old",    row=7)
+            self.detail_new_entry = add_field("Neuer GPA-Name aus ETS", "new",
                                               readonly=False, row=9)
             self.detail_new_entry.bind("<KeyRelease>", self.on_detail_new_name_changed)
             self.detail_new_entry.bind("<Return>",     self.on_detail_new_name_changed)
@@ -1021,7 +1022,7 @@ def run_gui() -> None:
                 self._info_frame,
                 text='ⓘ  Der neue Name kann hier beliebig angepasst werden, bevor die Synchronisation durchgeführt wird.',
                 bg=p["info_bg"], fg=p["info_fg"],
-                font=TTK_BODY, anchor="w", justify="left", wraplength=260)
+                font=TTK_INFOBOX, anchor="w", justify="left", wraplength=260)
             self._info_label.pack(fill="x", padx=10, pady=10)
 
         def _build_footer(self) -> None:
