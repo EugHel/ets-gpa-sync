@@ -34,7 +34,7 @@ from ..licensing import (
     NullProvider, get_machine_id,
 )
 from ..log import get_logger
-from .fonts import get_fonts, TTK_BODY, TTK_BODY_BOLD
+from .fonts import get_fonts, TTK_BODY, TTK_BODY_BOLD, TTK_SMALL
 
 _log = get_logger("gui.app")
 
@@ -811,9 +811,8 @@ def run_gui() -> None:
                              font=self._fonts["body"],
                              anchor="w").grid(
                     row=0, column=1, sticky="w", padx=(0, 10), pady=(8, 0))
-                # KPI-Zahlen: large (16pt bold) – prominent und DPI-skalierbar
                 ctk.CTkLabel(card, textvariable=var,
-                             font=self._fonts["large"],
+                             font=self._fonts["kpi"],
                              anchor="w").grid(
                     row=1, column=1, sticky="w", padx=(0, 10), pady=(0, 8))
 
@@ -1022,7 +1021,7 @@ def run_gui() -> None:
             # TTK_BODY (12pt Segoe UI) – DPI-skaliert über native Tk-Punktgröße
             self._status_label = tk.Label(
                 footer, textvariable=self.status_var,
-                bg=p["bg"], fg=p["text"], anchor="w", font=TTK_BODY)
+                bg=p["bg"], fg=p["text"], anchor="w", font=TTK_SMALL)
             self._status_label.grid(row=0, column=0, sticky="nsew", padx=12, pady=5)
 
             self.progress_bar = ttk.Progressbar(
@@ -1034,12 +1033,12 @@ def run_gui() -> None:
             self._hint_label = tk.Label(
                 footer,
                 text="Bearbeiten: Doppelklick/F2 | Kopieren: Rechtsklick / Strg+C",
-                bg=p["bg"], fg=p["muted"], font=TTK_BODY)
+                bg=p["bg"], fg=p["muted"], font=TTK_SMALL)
             self._hint_label.grid(row=0, column=2, sticky="e", padx=12, pady=5)
 
             self._version_label = tk.Label(
                 footer, text=f"v{__version__}",
-                bg=p["bg"], fg=p["muted"], font=TTK_BODY)
+                bg=p["bg"], fg=p["muted"], font=TTK_SMALL)
             self._version_label.grid(row=0, column=3, sticky="e", padx=(0, 12), pady=5)
 
         # ── Drag & Drop ────────────────────────────────────────────────────────
