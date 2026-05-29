@@ -24,16 +24,9 @@
 ## 🔮 Geplant (v1.x)
 
 * Auto-Update-Mechanismus
-* Erweiterte Filter- und Suchoptionen in der Tabelle
-* Batch-Verarbeitung mehrerer Projekte
+* Checkbox für alle Gruppenadressen auflisten
 * Verbesserte Konflikt-Auflösung bei Sync-Problemen
-* Anpassbare CSV-Export-Formate
 
-## 💭 Ideen (ungewiss)
-
-* macOS- und Linux-Unterstützung
-* Plugin-System für weitere KNX-Tools
-* Erweiterte Reporting-Funktionen
 
 ## 📝 Feedback und Vorschläge
 
