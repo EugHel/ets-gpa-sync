@@ -53,7 +53,7 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visual
 
 ## 📥 Download
 
-**[⬇️ ETS GPA Sync v0.9.0-beta herunterladen](https://github.com/EugHel/ets-gpa-sync/releases/latest)**
+**[⬇️ ETS GPA Sync v0.9.0-beta herunterladen](https://github.com/EugHel/ets-gpa-sync/releases/tag/v0.9.0-beta)**
 
 ZIP entpacken → `ETS-GPA-Sync.exe` starten. Kein Python erforderlich.
 Getestet auf Windows 10 und 11.
@@ -65,7 +65,7 @@ Getestet auf Windows 10 und 11.
 
 ## 🚀 Quick Start
 
-1. **Tool herunterladen** — [ETS GPA Sync v0.9.0-beta](https://github.com/EugHel/ets-gpa-sync/releases/latest) → ZIP entpacken → .exe starten
+1. **Tool herunterladen** — [ETS GPA Sync v0.9.0-beta](https://github.com/EugHel/ets-gpa-sync/releases/tag/v0.9.0-beta) → ZIP entpacken → .exe starten
 2. **GPA-Projekt einfügen** — `.gpa`-Datei per Drag & Drop oder Button
 3. **ETS-Export einfügen** — `.xml` oder `.knxproj` einfügen
 4. **"Analysieren"** klicken — Unterschiede werden angezeigt
