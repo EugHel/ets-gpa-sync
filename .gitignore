@@ -1,0 +1,62 @@
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw~
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# === Virtuelle Umgebungen ===
+.venv/
+venv/
+env/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === Windows ===
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# === Temporäre Dateien ===
+*.tmp
+*.bak
+*.orig
+.DS_Store
+
+# === PyInstaller ===
+*.spec
+!build.spec
+
+# === Lizenz-Schlüssel – NIEMALS ins Repo! ===
+private_key.pem
+*.pem
+generate_license.py
+
+# === Claude Code Konfiguration ===
+.claude/
+
+# === pytest Cache ===
+.pytest_cache/
+
+# === Test-Abdeckung ===
+.coverage
+.coverage.*
+htmlcov/
+
+# === Logs ===
+*.log
+logs/
+
+# === Lizenz-Artefakte (Trial-Daten, Aktivierungen) ===
+license.dat
+trial.dat
+*.lic

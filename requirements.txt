@@ -1,0 +1,16 @@
+# Laufzeit-Abhängigkeiten (Runtime)
+# Für .exe-Bau und normalen Start benötigt.
+
+# Krypto: AES-Entschlüsselung passwortgeschützter .knxproj-Dateien
+# (Fernet-Import in licensing/storage.py erfordert das Paket auch
+# wenn das Lizenz-Subsystem deaktiviert ist)
+cryptography>=41.0
+
+# GUI-Framework
+customtkinter>=5.2.2
+
+# Drag & Drop
+# 0.4.3: patch-frei unter Python 3.13/3.14 (kein tkinter.tix mehr),
+# korrekte x64/x86/arm64-Erkennung, getestete 64-bit-DLL.
+# 0.4.4 NICHT verwenden (32-bit-DLL im win-x64-Ordner — Bug).
+tkinterdnd2==0.4.3

@@ -1,0 +1,12 @@
+# Entwicklungs-Abhängigkeiten (Dev)
+# Enthält alle Laufzeit-Pakete plus Test- und Build-Werkzeuge.
+-r requirements.txt
+
+# Tests
+pytest>=9.0
+
+# .exe-Bau
+pyinstaller>=6.0
+
+# Icon-Erzeugung (scripts/create_icon.py)
+pillow>=10.0
