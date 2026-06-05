@@ -17,7 +17,7 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Eine erste Beta-Version (**
 
 ## ⭐ Was macht dieses Tool?
 
-Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visualisierung nutzt, kennt das Problem: Gruppenadressen-Namen müssen in beiden Tools **manuell synchron gehalten werden**. Eine Änderung in der ETS bedeutet stundenlanges Nachpflegen in der GPA — oder umgekehrt.
+Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visualisierung nutzt, kennt das Problem: Gruppenadressen-Namen müssen in GPA **manuell synchron gehalten werden**. Eine Änderung in der ETS bedeutet aufwendiges Nachpflegen in der GPA.
 
 **ETS GPA Sync** automatisiert genau diesen Abgleich:
 
@@ -26,13 +26,14 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visual
 - ✏️ **Selektiv übernehmen** — du entscheidest pro Gruppenadresse
 - 💾 **Sicher schreiben** — Originaldateien werden geschützt, Backups inklusive
 
-> *"Was vorher Stunden gedauert hat, geht jetzt in Minuten."*
+> *"Was vorher Stunden gedauert hat, geht jetzt in Sekunden."*
 
 ---
 
 ## ✨ Hauptfunktionen
 
-- ✅ **Drag & Drop** für `.gpa` und ETS-Exporte (`.xml` / `.knxproj`)
+- ✅ **Drag & Drop** für GPA `.gpa` und ETS-Exporte (`.xml` / `.knxproj`)
+- ✅ **Passwortgeschützte ETS-Projekte** (`.knxproj`) werden unterstützt
 - ✅ **Tabellarischer Vergleich** mit Filter- und Suchfunktion
 - ✅ **Selektive Synchronisation** — pro Gruppenadresse einzeln entscheiden
 - ✅ **Dark & Light Mode** mit anpassbaren Schriftgrößen (für hohe DPI)
@@ -58,8 +59,7 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visual
 ZIP entpacken → `ETS-GPA-Sync.exe` starten. Kein Python erforderlich.
 Getestet auf Windows 10 und 11.
 
-> ⚠️ Beta-Version — bitte vor der Synchronisation Sicherheitskopien
-> erstellen.
+> ⚠️ Beta-Version — bitte vor der Synchronisation Sicherheitskopien erstellen.
 
 ---
 
@@ -69,9 +69,9 @@ Getestet auf Windows 10 und 11.
 2. **GPA-Projekt einfügen** — `.gpa`-Datei per Drag & Drop oder Button
 3. **ETS-Export einfügen** — `.xml` oder `.knxproj` einfügen
 4. **"Analysieren"** klicken — Unterschiede werden angezeigt
-5. **Gewünschte Änderungen auswählen** und **"Synchronisieren"**
+5. **Gewünschte Änderungen auswählen** und **"Synchronisieren"** klicken
 
-Fertig. Die `.gpa`-Datei enthält jetzt die neuen Namen aus der ETS.
+Fertig. Eine neue `.gpa`-Datei wird erzeugt. Die originale Datei bleibt unverändert.
 
 > 💡 **Tipp:** Erstelle vor jeder Synchronisation eine Sicherheitskopie deiner Projekte.
 
@@ -81,7 +81,7 @@ Fertig. Die `.gpa`-Datei enthält jetzt die neuen Namen aus der ETS.
 
 Dieses Tool ist **kostenlos und Open Source**. Wenn es dir hilft, freue ich mich über deine Unterstützung:
 
-- 💼 [**GitHub Sponsors**](https://github.com/sponsors/EugHel) *(Einrichtung läuft)*
+- 💼 [**GitHub Sponsors**](https://github.com/sponsors/EugHel) — einmalig oder monatlich
 - ☕ [**Ko-fi**](https://ko-fi.com/eughel) — einmalige Unterstützung mit einem Kaffee
 
 Jede Spende hilft, das Tool aktiv weiterzuentwickeln und **kostenlos für die KNX-Community** verfügbar zu halten.
