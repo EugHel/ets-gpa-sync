@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import threading
+import webbrowser
 import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -45,6 +46,7 @@ ACCENT_DARK = "#2f8612"
 
 # ── Externe Links ─────────────────────────────────────────────────────────────
 _LICENSE_URL = "https://github.com/EugHel/ets-gpa-sync"
+_KOFI_URL    = "https://ko-fi.com/eughel"
 
 # ── Theme-Farbpalette ──────────────────────────────────────────────────────────
 _PALETTE: Dict[str, Dict[str, str]] = {
@@ -1761,9 +1763,88 @@ def run_gui() -> None:
             _log.info("Synchronisierung abgeschlossen: %d Datenpunkte geändert -> %s", changed, out)
             self._set_busy(False)
             self.status_var.set(f"Fertig: {changed} Datenpunkte geändert. Neue Datei: {out}")
-            messagebox.showinfo("Fertig",
-                f"{changed} Datenpunkte geändert.\n\nNeue GPA-Datei:\n{out}{check_text}"
-                "\n\nBitte zuerst als Kopie im GPA öffnen und prüfen.")
+            self._show_sync_done_dialog(changed, out, check_text)
+
+        def _show_sync_done_dialog(self, changed: int, out: str, check_text: str) -> None:
+            """Erfolgs-Dialog mit Erfolgsmeldung und dezentem Ko-fi-Spendenhinweis.
+
+            Ersetzt das frühere messagebox.showinfo, damit ein Ko-fi-Button
+            eingebettet werden kann und der Dialog dem Dark/Light-Theme folgt.
+            """
+            WRAP = 432  # Zeilenumbruch-Breite (Dialog ~480px abzüglich Innenabstand)
+
+            dialog = ctk.CTkToplevel(self)
+            dialog.title("Fertig")
+            dialog.resizable(False, False)
+            dialog.transient(self)
+            dialog.columnconfigure(0, weight=1)
+
+            # ── Erfolgsmeldung ────────────────────────────────────────────────
+            ctk.CTkLabel(dialog, text="✅  Fertig",
+                         font=self._fonts["normal"]).grid(
+                row=0, column=0, padx=24, pady=(20, 8), sticky="w")
+
+            ctk.CTkLabel(dialog, text=f"{changed} Datenpunkte geändert.",
+                         font=self._fonts["body_bold"], justify="left",
+                         wraplength=WRAP).grid(
+                row=1, column=0, padx=24, pady=(0, 8), sticky="w")
+
+            ctk.CTkLabel(dialog, text=f"Neue GPA-Datei:\n{out}",
+                         font=self._fonts["body"], justify="left",
+                         wraplength=WRAP).grid(
+                row=2, column=0, padx=24, pady=(0, 8), sticky="w")
+
+            check_msg = check_text.strip()
+            if check_msg:
+                ctk.CTkLabel(dialog, text=check_msg,
+                             font=self._fonts["body"], justify="left",
+                             wraplength=WRAP).grid(
+                    row=3, column=0, padx=24, pady=(0, 8), sticky="w")
+
+            ctk.CTkLabel(dialog, text="Bitte zuerst als Kopie im GPA öffnen und prüfen.",
+                         font=self._fonts["body"], justify="left",
+                         wraplength=WRAP).grid(
+                row=4, column=0, padx=24, pady=(0, 14), sticky="w")
+
+            # ── Trennlinie ────────────────────────────────────────────────────
+            tk.Frame(dialog, height=1, bg=self._p["border"]).grid(
+                row=5, column=0, sticky="ew", padx=24, pady=(0, 12))
+
+            # ── Dezenter Spendenhinweis ───────────────────────────────────────
+            ctk.CTkLabel(dialog,
+                         text="☕  Wenn dir das Tool geholfen hat,\n"
+                              "freue ich mich über deine Unterstützung!",
+                         font=self._fonts["body"], justify="left",
+                         text_color=("gray35", "gray65"),
+                         wraplength=WRAP).grid(
+                row=6, column=0, padx=24, pady=(0, 4), sticky="w")
+
+            ctk.CTkButton(dialog, text="☕ Ko-fi", width=110,
+                          fg_color="transparent", border_width=1,
+                          border_color=("gray60", "gray45"),
+                          text_color=("gray15", "gray85"),
+                          hover_color=("gray85", "gray25"),
+                          command=lambda: webbrowser.open(_KOFI_URL)).grid(
+                row=7, column=0, padx=24, pady=(0, 14), sticky="e")
+
+            # ── Hauptbutton (OK) ──────────────────────────────────────────────
+            ok_btn = ctk.CTkButton(dialog, text="OK", fg_color=ACCENT,
+                                   hover_color=ACCENT_DARK, text_color="white",
+                                   command=dialog.destroy)
+            ok_btn.grid(row=8, column=0, padx=24, pady=(0, 20), sticky="e")
+
+            dialog.bind("<Return>", lambda _e: dialog.destroy())
+            dialog.bind("<Escape>", lambda _e: dialog.destroy())
+
+            # Mittig im Tool-Fenster positionieren.
+            dialog.update_idletasks()
+            x = self.winfo_x() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
+            y = self.winfo_y() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+
+            # grab_set erst nach dem ersten Rendern, sonst flackert das Fenster.
+            dialog.after(100, dialog.grab_set)
+            dialog.after(120, ok_btn.focus_set)
 
         def _sync_error(self, error: Exception) -> None:
             _log.error("Synchronisierungsfehler: %s", error, exc_info=True)
