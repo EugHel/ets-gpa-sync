@@ -43,12 +43,7 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visual
 
 ## 📸 Screenshots
 
-> *Screenshots werden in Kürze ergänzt.*
-
-<!-- Sobald Screenshots verfügbar:
 ![Dark Mode](docs/screenshots/dark_mode.png)
-![Light Mode](docs/screenshots/light_mode.png)
--->
 
 ---
 
