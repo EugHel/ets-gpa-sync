@@ -595,6 +595,23 @@ def run_gui() -> None:
                 if hasattr(self, "_banner_frame"):
                     self._banner_frame.grid_remove()
 
+        def _center_dialog(self, title: str) -> None:
+            """Zentriert das nächste messagebox-Fenster auf dem Tool-Fenster.
+
+            Standard-messagebox kennt keine eigene Positionierung; daher wird
+            das frisch erzeugte Toplevel kurz nach dem Aufruf per after()
+            anhand seines Titels gesucht und mittig positioniert.
+            """
+            def _do():
+                for w in self.winfo_children():
+                    if isinstance(w, tk.Toplevel) and w.title() == title:
+                        self.update_idletasks()
+                        x = self.winfo_x() + (self.winfo_width() // 2) - (w.winfo_width() // 2)
+                        y = self.winfo_y() + (self.winfo_height() // 2) - (w.winfo_height() // 2)
+                        w.geometry(f"+{x}+{y}")
+                        break
+            self.after(10, _do)
+
         def _open_license_dialog(self) -> None:
             """Öffnet den modalen Lizenz-Verwaltungs-Dialog."""
             dialog = ctk.CTkToplevel(self)
@@ -1115,8 +1132,9 @@ def run_gui() -> None:
                 self.ets_var.set(path)
                 self.status_var.set(f"ETS-Datei übernommen: {_shorten_path(path)}")
             else:
+                self._center_dialog("Nicht erkannt")
                 messagebox.showinfo("Nicht erkannt",
-                                    "Bitte eine .gpa/.zip-, .xml- oder .knxproj-Datei ablegen.")
+                                    "Bitte eine .gpa-, .xml- oder .knxproj-Datei ablegen.")
 
         # ── Datei-Auswahl ──────────────────────────────────────────────────────
 
@@ -1228,6 +1246,7 @@ def run_gui() -> None:
         # ── Hilfe ──────────────────────────────────────────────────────────────
 
         def show_help(self) -> None:
+            self._center_dialog("Hilfe – ETS GPA Sync")
             messagebox.showinfo("Hilfe – ETS GPA Sync",
                 'Zweck:\n'
                 'Dieses Tool übernimmt Gruppenadressnamen aus einem ETS-Export in ein GPA-Projekt. '
@@ -1237,7 +1256,7 @@ def run_gui() -> None:
                 '2. ETS-Gruppenadressen-Export (.xml) oder ETS-Projekt (.knxproj) ablegen oder auswählen.\n'
                 '3. Auf „Analysieren“ klicken.\n'
                 '4. Änderungen prüfen und bei Bedarf einzelne Zeilen abwählen.\n'
-                '5. Mit „Synchronisieren + speichern“ eine neue GPA-Datei erzeugen.\n\n'
+                '5. Mit „Synchronisieren“ eine neue GPA-Datei erzeugen.\n\n'
                 'Wichtig:\n'
                 'Das Originalprojekt wird nicht verändert. Im GPA-Projekt wird nur der sichtbare '
                 'Datenpunktname geändert. LogicalName und Gruppenadressen bleiben unverändert.\n\n'
@@ -1298,14 +1317,17 @@ def run_gui() -> None:
             ets = Path(ets_text) if ets_text else None
 
             if gpa is None and ets is None:
+                self._center_dialog("Hinweis")
                 messagebox.showwarning("Hinweis",
-                    "Bitte mindestens ein GPA-Projekt oder eine ETS-XML auswählen.")
+                    "Bitte mindestens eine GPA-Datei oder einen ETS-Export auswählen.")
                 return
             if gpa is not None and not gpa.exists():
-                messagebox.showerror("Fehler", "GPA-Datei nicht gefunden.")
+                self._center_dialog("Fehler")
+                messagebox.showerror("Fehler", "GPA-Datei nicht gefunden. Bitte erneut auswählen.")
                 return
             if ets is not None and not ets.exists():
-                messagebox.showerror("Fehler", "ETS-XML nicht gefunden.")
+                self._center_dialog("Fehler")
+                messagebox.showerror("Fehler", "ETS-Datei nicht gefunden. Bitte erneut auswählen.")
                 return
             if gpa is not None and not self._ensure_password_if_needed(gpa):
                 self.status_var.set("Analyse abgebrochen: GPA-ZIP-Passwort nicht eingegeben.")
@@ -1389,6 +1411,7 @@ def run_gui() -> None:
             _log.error("Analysefehler: %s", error, exc_info=True)
             self._set_busy(False)
             self.status_var.set("Analyse fehlgeschlagen.")
+            self._center_dialog("Fehler bei Analyse")
             messagebox.showerror("Fehler bei Analyse", str(error))
 
         # ── Filter ─────────────────────────────────────────────────────────────
@@ -1522,6 +1545,7 @@ def run_gui() -> None:
                 value = entry.get().strip()
                 self._destroy_edit_entry()
                 if not value:
+                    self._center_dialog("Hinweis")
                     messagebox.showinfo("Hinweis", "Der neue Name darf nicht leer sein.")
                     return
                 c.new_name = value
@@ -1669,7 +1693,8 @@ def run_gui() -> None:
 
         def save_csv(self) -> None:
             if not self.candidates:
-                messagebox.showinfo("Hinweis", "Erst analysieren.")
+                self._center_dialog("Hinweis")
+                messagebox.showinfo("Hinweis", "Bitte zuerst auf 'Analysieren' klicken.")
                 return
             path = filedialog.asksaveasfilename(
                 defaultextension=".csv",
@@ -1681,6 +1706,7 @@ def run_gui() -> None:
                 export_candidates_csv(self.candidates, Path(path))
                 self.status_var.set(f"CSV gespeichert: {path}")
             except Exception as e:
+                self._center_dialog("Fehler beim CSV-Export")
                 messagebox.showerror("Fehler beim CSV-Export", str(e))
 
         # ── Synchronisierung ───────────────────────────────────────────────────
@@ -1692,9 +1718,12 @@ def run_gui() -> None:
                 if c.selected and c.status == SyncStatus.AENDERUNG
             }
             if not selected_updates:
-                messagebox.showinfo("Hinweis", "Keine Änderungen ausgewählt.")
+                self._center_dialog("Hinweis")
+                messagebox.showinfo("Hinweis",
+                    "Keine Änderungen ausgewählt. Bitte mindestens eine Zeile auswählen.")
                 return False
             if any(not n for n in selected_updates.values()):
+                self._center_dialog("Ungültiger Name")
                 messagebox.showerror("Ungültiger Name",
                                      "Mindestens ein ausgewählter neuer Name ist leer.")
                 return False
@@ -1706,6 +1735,7 @@ def run_gui() -> None:
                 final_names.extend(selected_updates.values())
             duplicates = sorted({n for n in final_names if final_names.count(n) > 1})
             if duplicates:
+                self._center_dialog("Doppelte Namen")
                 messagebox.showerror("Doppelte Namen",
                     "Diese Zielnamen wären nach dem Speichern doppelt vorhanden:\n\n"
                     + "\n".join(duplicates[:20])
@@ -1850,6 +1880,7 @@ def run_gui() -> None:
             _log.error("Synchronisierungsfehler: %s", error, exc_info=True)
             self._set_busy(False)
             self.status_var.set("Synchronisierung fehlgeschlagen.")
+            self._center_dialog("Fehler beim Synchronisieren")
             messagebox.showerror("Fehler beim Synchronisieren", str(error))
 
     App().mainloop()
