@@ -7,36 +7,41 @@
 [![Tests](https://img.shields.io/badge/tests-103%20passing-brightgreen.svg)](#)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#)
 
+<div align="center">
+
+### 💖 Unterstütze das Projekt
+
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/eughel)
+&nbsp;&nbsp;
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github)](https://github.com/sponsors/EugHel)
+
+*Dieses Tool ist kostenlos. Jede Unterstützung hilft, es aktiv weiterzuentwickeln!*
+
+</div>
+
 ---
 
-## 🚧 Status: In aktiver Entwicklung
+## 🚧 Status: Beta
 
-Dieses Projekt befindet sich in aktiver Entwicklung. Eine erste Beta-Version (**v0.9.0-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) mit Code-Signing ist in Vorbereitung.
+Eine erste Beta-Version (**v0.9.0-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) mit Code-Signing ist in Vorbereitung.
 
 ---
 
 ## ⭐ Was macht dieses Tool?
 
-Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visualisierung nutzt, kennt das Problem: Gruppenadressen-Namen müssen in GPA **manuell synchron gehalten werden**. Eine Änderung in der ETS bedeutet aufwendiges Nachpflegen in der GPA.
+Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** nutzt, kennt das Problem: Gruppenadressen-Namen müssen manuell synchron gehalten werden. Eine Änderung in der ETS bedeutet aufwendiges Nachpflegen in der GPA.
 
-**ETS GPA Sync** automatisiert genau diesen Abgleich:
-
-- 📥 **Beide Quellen einlesen** — `.gpa`-Datei (Gira GPA) und `.xml` / `.knxproj` (ETS)
-- 🔍 **Unterschiede erkennen** — übersichtliche Anzeige aller Abweichungen
-- ✏️ **Selektiv übernehmen** — du entscheidest pro Gruppenadresse
-- 💾 **Sicher schreiben** — Originaldateien werden geschützt, Backups inklusive
-
-> *"Was vorher Stunden gedauert hat, geht jetzt in Sekunden."*
+**ETS GPA Sync** automatisiert genau diesen Abgleich — du entscheidest pro Gruppenadresse, was übernommen wird. Das Original bleibt immer unverändert.
 
 ---
 
 ## ✨ Hauptfunktionen
 
-- ✅ **Drag & Drop** für GPA `.gpa` und ETS-Exporte (`.xml` / `.knxproj`)
-- ✅ **Passwortgeschützte ETS-Projekte** (`.knxproj`) werden unterstützt
+- ✅ **Drag & Drop** für `.gpa` und ETS-Exporte (`.xml` / `.knxproj`)
+- ✅ **Passwortgeschützte ETS-Projekte** werden unterstützt
 - ✅ **Tabellarischer Vergleich** mit Filter- und Suchfunktion
 - ✅ **Selektive Synchronisation** — pro Gruppenadresse einzeln entscheiden
-- ✅ **Dark & Light Mode** mit anpassbaren Schriftgrößen (für hohe DPI)
+- ✅ **Dark & Light Mode** mit anpassbaren Schriftgrößen
 - ✅ **CSV-Export** für Dokumentation und Audit
 
 ---
@@ -54,42 +59,23 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** für Visual
 ZIP entpacken → `ETS-GPA-Sync.exe` starten. Kein Python erforderlich.
 Getestet auf Windows 10 und 11.
 
-> ⚠️ Beta-Version — bitte vor der Synchronisation Sicherheitskopien erstellen.
+> ⚠️ Beta — bitte vor der Synchronisation Sicherheitskopien erstellen.
 
 ---
 
 ## 🚀 Quick Start
 
-1. **Tool herunterladen** — [ETS GPA Sync v0.9.0-beta](https://github.com/EugHel/ets-gpa-sync/releases/tag/v0.9.0-beta) → ZIP entpacken → .exe starten
-2. **GPA-Projekt einfügen** — `.gpa`-Datei per Drag & Drop oder Button
-3. **ETS-Export einfügen** — `.xml` oder `.knxproj` einfügen
-4. **"Analysieren"** klicken — Unterschiede werden angezeigt
-5. **Gewünschte Änderungen auswählen** und **"Synchronisieren"** klicken
+1. **Herunterladen** → ZIP entpacken → `.exe` starten
+2. **GPA-Projekt** per Drag & Drop oder Button einfügen
+3. **ETS-Export** (`.xml` / `.knxproj`) einfügen
+4. **"Analysieren"** klicken
+5. **Änderungen auswählen** → **"Synchronisieren"**
 
-Fertig. Eine neue `.gpa`-Datei wird erzeugt. Die originale Datei bleibt unverändert.
-
-> 💡 **Tipp:** Erstelle vor jeder Synchronisation eine Sicherheitskopie deiner Projekte.
-
----
-
-## 💖 Unterstütze das Projekt
-
-Dieses Tool ist **kostenlos und Open Source**. Wenn es dir hilft, freue ich mich über deine Unterstützung:
-
-- 💼 [**GitHub Sponsors**](https://github.com/sponsors/EugHel) — einmalig oder monatlich
-- ☕ [**Ko-fi**](https://ko-fi.com/eughel) — einmalige Unterstützung mit einem Kaffee
-
-Jede Spende hilft, das Tool aktiv weiterzuentwickeln und **kostenlos für die KNX-Community** verfügbar zu halten.
+Fertig. Eine neue `.gpa`-Datei wird erzeugt — das Original bleibt unverändert.
 
 ---
 
 ## 🛠️ Für Entwickler
-
-### Voraussetzungen
-- **Python 3.13 oder neuer (entwickelt mit 3.14)**
-- **Windows** (Hauptplattform — macOS/Linux experimentell)
-
-### Installation aus dem Quellcode
 
 ```bash
 git clone https://github.com/EugHel/ets-gpa-sync.git
@@ -98,57 +84,29 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### Tests ausführen
-
 ```bash
 pytest tests/
 ```
 
-### DPI-Anpassung (optional)
-
-Bei sehr hoher Windows-Skalierung (175-200%) kann der globale Schrift-Faktor angepasst werden:
-
-```python
-# In gpa_ga_sync/config.py
-UI_SCALE_FACTOR = 0.85   # Standard: 1.0
-```
+Python 3.13 oder neuer erforderlich (entwickelt mit 3.14).
 
 ---
 
-## 🗺️ Roadmap
+## 📋 Weiteres
 
-Siehe [ROADMAP.md](ROADMAP.md) für geplante Features und Versionspläne.
-
-## 📜 Changelog
-
-Siehe [CHANGELOG.md](CHANGELOG.md) für die Versionshistorie.
-
----
-
-## 🤝 Beiträge
-
-Beiträge sind willkommen! Bitte erstelle zuerst ein [Issue](https://github.com/EugHel/ets-gpa-sync/issues/new), bevor du größere Pull Requests einreichst.
-
-## 🔒 Sicherheit
-
-Sicherheitslücken bitte gemäß [SECURITY.md](SECURITY.md) melden — **nicht** als öffentliches Issue.
-
-## 📜 Lizenz
-
-**MIT License** — siehe [LICENSE](LICENSE) für Details.
+| | |
+|---|---|
+| 🗺️ Roadmap | [ROADMAP.md](ROADMAP.md) |
+| 📜 Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| 🤝 Beiträge | Bitte zuerst ein [Issue](https://github.com/EugHel/ets-gpa-sync/issues/new) erstellen |
+| 🔒 Sicherheit | Gemäß [SECURITY.md](SECURITY.md) melden |
+| 📜 Lizenz | [MIT License](LICENSE) |
 
 ---
 
 ## ⚠️ Disclaimer
 
-Dieses Tool wird **ohne Gewährleistung** bereitgestellt. Erstelle vor jeder Synchronisation eine **Sicherheitskopie** deiner Projekte. Die Autoren übernehmen **keine Haftung** für Datenverlust oder Projektschäden.
-
----
-
-## 📞 Kontakt
-
-- **Issues & Feature-Requests**: [GitHub Issues](https://github.com/EugHel/ets-gpa-sync/issues)
-- **Sicherheitsthemen**: siehe [SECURITY.md](SECURITY.md)
+Dieses Tool wird ohne Gewährleistung bereitgestellt. Erstelle vor jeder Synchronisation eine Sicherheitskopie. Die Autoren übernehmen keine Haftung für Datenverlust.
 
 ---
 
