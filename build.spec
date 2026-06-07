@@ -15,9 +15,9 @@ One-File-Variante (optional, langsamer beim Start):
     Unten EXE(exclude_binaries=False) setzen und COLLECT-Block entfernen.
 
 Hinweis zu tkinterdnd2:
-    Version 0.3.0 muss installiert sein + Python-3.13+-Patches angewendet
-    (siehe requirements.txt). Die DLL und TCL-Dateien werden manuell
-    eingeschlossen, da PyInstaller sie über Tcl nicht automatisch findet.
+    Version 0.4.3 (patch-frei, läuft auch unter Python 3.14). Die DLL und
+    TCL-Dateien werden manuell eingeschlossen, da PyInstaller sie über Tcl
+    nicht automatisch findet.
 """
 
 from pathlib import Path
