@@ -5,6 +5,13 @@ Diese Flags steuern optionale Subsysteme, die deaktiviert werden
 können, ohne den Code zu entfernen.
 """
 
+# ═══════════════════════════════════════════════════════════
+# VERSION
+# ═══════════════════════════════════════════════════════════
+# Einzige Quelle der Wahrheit für die angezeigte Versionsnummer
+# (Fußleiste, CLI, ...). Inklusive "v"-Präfix.
+APP_VERSION = "v0.9.0-beta"
+
 # Lizenz-Subsystem (Trial, Provider-basierte Aktivierung)
 # Aktuell DEAKTIVIERT — das Tool ist Open Source unter MIT-Lizenz.
 # Kann später reaktiviert werden für optionale "Pro Support"-Modelle.

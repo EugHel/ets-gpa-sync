@@ -28,8 +28,7 @@ from ..core import (
     parse_gpa_datapoints,
     write_updated_gpa,
 )
-from .. import __version__
-from ..config import LICENSING_ENABLED
+from ..config import LICENSING_ENABLED, APP_VERSION
 from ..licensing import (
     LicenseManager, LicenseStatus, LicenseStorage, TrialManager,
     NullProvider, get_machine_id,
@@ -1074,7 +1073,7 @@ def run_gui() -> None:
             self._hint_label.grid(row=0, column=2, sticky="e", padx=12, pady=5)
 
             self._version_label = tk.Label(
-                footer, text=f"v{__version__}",
+                footer, text=APP_VERSION,
                 bg=p["bg"], fg=p["muted"], font=TTK_SMALL)
             self._version_label.grid(row=0, column=3, sticky="e", padx=(0, 12), pady=5)
 

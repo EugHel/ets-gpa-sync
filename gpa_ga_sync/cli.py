@@ -13,12 +13,12 @@ from .core import (
     parse_gpa_datapoints,
     write_updated_gpa,
 )
-from . import __version__
+from .config import APP_VERSION
 from .log import setup_logging
 
 
 def run_cli(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description=f"GPA-Datenpunktnamen mit ETS-Gruppenadressnamen synchronisieren (Version {__version__})")
+    parser = argparse.ArgumentParser(description=f"GPA-Datenpunktnamen mit ETS-Gruppenadressnamen synchronisieren ({APP_VERSION})")
     parser.add_argument("--gpa", required=True, help="Pfad zur GPA-Datei")
     parser.add_argument("--ets", required=True, help="Pfad zum ETS-Gruppenadress-Export XML")
     parser.add_argument("--out", help="Ausgabedatei .gpa")
