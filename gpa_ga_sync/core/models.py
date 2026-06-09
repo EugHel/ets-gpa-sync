@@ -18,6 +18,7 @@ class SyncStatus(StrEnum):
     AENDERUNG    = "Änderung"
     LEERZEICHEN  = "Leerzeichen"
     MEHRDEUTIG   = "Mehrdeutig"
+    ADRESSKONFLIKT = "Adress-Konflikt"
     NICHT_IN_ETS = "Nicht in ETS"
     NUR_GPA      = "Nur GPA"
     NUR_ETS      = "Nur ETS"

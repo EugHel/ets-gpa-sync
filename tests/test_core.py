@@ -374,6 +374,56 @@ class TestBuildSyncCandidates(unittest.TestCase):
         self.assertIn("Gleicher Name", new_names)
         self.assertIn("Gleicher Name (2)", new_names)
 
+    def test_duplicate_write_address_marked_as_conflict(self):
+        # Datenfehler in der GPA: zwei Datenpunkte tragen dieselbe Write-GA 2/6/4.
+        # Beide würden auf denselben ETS-Namen umbenannt → Adress-Konflikt statt "(N)".
+        val = tool.ga_to_int("2/6/4")
+        candidates = tool.build_sync_candidates(
+            [
+                _dp("rgb.xml", "Alt RGB", write_ga=val),
+                _dp("hsv.xml", "Alt HSV", write_ga=val),
+            ],
+            {val: _ets("2/6/4", "Kochinsel HSV")},
+        )
+        self.assertEqual(len(candidates), 2)
+        statuses = {c.status for c in candidates}
+        self.assertEqual(statuses, {tool.SyncStatus.ADRESSKONFLIKT})
+        # Kein "(N)" und keine Änderung wird erzeugt.
+        new_names = {c.new_name for c in candidates}
+        self.assertNotIn("Kochinsel HSV (2)", new_names)
+        self.assertFalse(any(c.status == tool.SyncStatus.AENDERUNG for c in candidates))
+
+    def test_duplicate_address_conflict_not_selected(self):
+        # Konflikt-Zeilen dürfen nicht auswählbar/schreibbar sein.
+        val = tool.ga_to_int("2/6/4")
+        candidates = tool.build_sync_candidates(
+            [
+                _dp("a.xml", "Alt A", write_ga=val),
+                _dp("b.xml", "Alt B", write_ga=val),
+            ],
+            {val: _ets("2/6/4", "Doppelte GA")},
+        )
+        self.assertTrue(all(not c.selected for c in candidates))
+
+    def test_same_name_different_address_still_deduplicates(self):
+        # Regressionsschutz: gleicher Name bei VERSCHIEDENEN Adressen bleibt
+        # ein legitimer Dedup-Fall mit "(2)" – kein Adress-Konflikt.
+        val1 = tool.ga_to_int("0/0/1")
+        val2 = tool.ga_to_int("0/0/2")
+        candidates = tool.build_sync_candidates(
+            [
+                _dp("a.xml", "Alt A", write_ga=val1),
+                _dp("b.xml", "Alt B", write_ga=val2),
+            ],
+            {
+                val1: _ets("0/0/1", "Gleicher Name"),
+                val2: _ets("0/0/2", "Gleicher Name"),
+            },
+        )
+        self.assertFalse(any(c.status == tool.SyncStatus.ADRESSKONFLIKT for c in candidates))
+        new_names = {c.new_name for c in candidates if c.status == tool.SyncStatus.AENDERUNG}
+        self.assertIn("Gleicher Name (2)", new_names)
+
     def test_empty_inputs(self):
         self.assertEqual(tool.build_sync_candidates([], {}), [])
 

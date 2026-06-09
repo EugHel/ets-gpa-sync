@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .ga import int_to_ga
@@ -69,8 +70,31 @@ def build_sync_candidates(datapoints: Sequence[GpaDatapoint], ets_map: Dict[int,
     resolved: Dict[str, Tuple[EtsGroupAddress, str]] = {}
     ambiguous_rows: List[SyncCandidate] = []
     not_in_ets_rows: List[SyncCandidate] = []
+    conflict_rows: List[SyncCandidate] = []
+
+    # Datenfehler in der GPA: mehrere Datenpunkte tragen DIESELBE write_group_address,
+    # die zudem im ETS existiert. Sie würden alle auf denselben ETS-Namen umbenannt.
+    # Statt das still über "(N)" aufzulösen, werden sie als Adress-Konflikt markiert.
+    write_counts = Counter(
+        dp.write_group_address for dp in datapoints
+        if dp.write_group_address and dp.write_group_address in ets_map
+    )
+    conflicting_writes = {value for value, count in write_counts.items() if count > 1}
 
     for dp in datapoints:
+        if dp.write_group_address in conflicting_writes:
+            ga = ets_map[dp.write_group_address]
+            conflict_rows.append(SyncCandidate(
+                selected=False,
+                status=SyncStatus.ADRESSKONFLIKT,
+                zip_path=dp.zip_path,
+                current_name=dp.entity_name,
+                new_name=ga.name,
+                group_address=ga.address,
+                group_address_value=ga.value,
+                source_field="WriteGroupAddress",
+            ))
+            continue
         ga, status, source = resolve_ets_match(dp, ets_map)
         if ga is not None:
             resolved[dp.zip_path] = (ga, source)
@@ -106,6 +130,7 @@ def build_sync_candidates(datapoints: Sequence[GpaDatapoint], ets_map: Dict[int,
         cand_status = SyncStatus.LEERZEICHEN if normalize_name_for_compare(dp.entity_name) == normalize_name_for_compare(target_name) else SyncStatus.AENDERUNG
         candidates.append(SyncCandidate(True, cand_status, dp.zip_path, dp.entity_name, target_name, ga.address, ga.value, source))
 
+    candidates.extend(conflict_rows)
     candidates.extend(ambiguous_rows)
     candidates.extend(not_in_ets_rows)
     return candidates

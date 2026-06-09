@@ -67,6 +67,7 @@ _PALETTE: Dict[str, Dict[str, str]] = {
         "info_fg":      "#90b8e0",
         "info_border":  "#2a4a6a",
         "ambiguous_fg": "#a78bfa",
+        "conflict_fg":  "#f87171",
         "progress_bg":  "#3d3d3d",
     },
     "light": {
@@ -87,6 +88,7 @@ _PALETTE: Dict[str, Dict[str, str]] = {
         "info_fg":      "#1e3a8a",
         "info_border":  "#bfdbfe",
         "ambiguous_fg": "#7c3aed",
+        "conflict_fg":  "#dc2626",
         "progress_bg":  "#e0e0e0",
     },
 }
@@ -318,6 +320,7 @@ def run_gui() -> None:
                 self.tree.tag_configure("selected_sync", background=p["soft_green"])
                 self.tree.tag_configure("unselected_sync", foreground=p["muted"])
                 self.tree.tag_configure("ambiguous",     foreground=p["ambiguous_fg"])
+                self.tree.tag_configure("conflict",      foreground=p["conflict_fg"])
 
         def _refresh_legacy_widgets(self) -> None:
             """Aktualisiert tk/ttk-Widgets (kein Auto-Recolor bei CTK-Theme-Wechsel)."""
@@ -1265,7 +1268,9 @@ def run_gui() -> None:
                 '• Wenn nur eine Datei geladen ist, wird trotzdem eine reine Kontrollliste angezeigt.\n'
                 '• .knxproj-Dateien können ein ETS-Projektpasswort benötigen.\n'
                 '• Reine Leerzeichen-Unterschiede werden als „Leerzeichen“ markiert.\n'
-                '• GPA-Adressen ohne Treffer im ETS-Export werden als „Nicht in ETS“ angezeigt.')
+                '• GPA-Adressen ohne Treffer im ETS-Export werden als „Nicht in ETS“ angezeigt.\n'
+                '• Mehrere GPA-Datenpunkte mit identischer Gruppenadresse werden als „Adress-Konflikt“ '
+                'angezeigt und nicht automatisch umbenannt (Datenfehler in der GPA).')
 
         # ── Status / KPIs ──────────────────────────────────────────────────────
 
@@ -1447,6 +1452,9 @@ def run_gui() -> None:
                 if c.status == SyncStatus.MEHRDEUTIG:
                     mark = "!"
                     tags.append("ambiguous")
+                if c.status == SyncStatus.ADRESSKONFLIKT:
+                    mark = "!"
+                    tags.append("conflict")
                 self.tree.insert("", "end", iid=iid, text=mark,
                                  values=(c.status, c.group_address, c.current_name, c.new_name),
                                  tags=tuple(tags))
