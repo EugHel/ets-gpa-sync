@@ -10,7 +10,7 @@ können, ohne den Code zu entfernen.
 # ═══════════════════════════════════════════════════════════
 # Einzige Quelle der Wahrheit für die angezeigte Versionsnummer
 # (Fußleiste, CLI, ...). Inklusive "v"-Präfix.
-APP_VERSION = "v0.9.0-beta"
+APP_VERSION = "v0.9.1-beta"
 
 # Lizenz-Subsystem (Trial, Provider-basierte Aktivierung)
 # Aktuell DEAKTIVIERT — das Tool ist Open Source unter MIT-Lizenz.
