@@ -233,10 +233,11 @@ def run_gui() -> None:
                 "new":    tk.StringVar(value="-"),
             }
             self.kpi_vars = {
-                "gpa":      tk.StringVar(value="–"),
-                "ets":      tk.StringVar(value="–"),
-                "diff":     tk.StringVar(value="0"),
-                "selected": tk.StringVar(value="0"),
+                "gpa":       tk.StringVar(value="–"),
+                "ets":       tk.StringVar(value="–"),
+                "diff":      tk.StringVar(value="0"),
+                "selected":  tk.StringVar(value="0"),
+                "conflicts": tk.StringVar(value="0"),
             }
             self.candidates: List[SyncCandidate] = []
             self.datapoint_name_by_path: Dict[str, str] = {}
@@ -821,18 +822,19 @@ def run_gui() -> None:
         def _build_kpi_row(self, parent) -> None:
             row = ctk.CTkFrame(parent, corner_radius=0, fg_color="transparent")
             row.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-            for i in range(4):
+            for i in range(5):
                 row.columnconfigure(i, weight=1, uniform="kpi")
 
             kpi_defs = [
-                ("gpa", "GPA-Datenpunkte", self.kpi_vars["gpa"],      "#009b68"),
-                ("ets", "ETS-Adressen",    self.kpi_vars["ets"],      "#009b68"),
-                ("⚠",  "Unterschiede",     self.kpi_vars["diff"],     "#f59e0b"),
-                ("✓",  "Ausgewählt",        self.kpi_vars["selected"], "#16a34a"),
+                ("gpa", "GPA-Datenpunkte", self.kpi_vars["gpa"],       "#009b68"),
+                ("ets", "ETS-Adressen",    self.kpi_vars["ets"],       "#009b68"),
+                ("⚠",  "Unterschiede",     self.kpi_vars["diff"],      "#f59e0b"),
+                ("✓",  "Ausgewählt",        self.kpi_vars["selected"],  "#16a34a"),
+                ("✅",  "Konflikte",         self.kpi_vars["conflicts"], "#16a34a"),
             ]
             self._kpi_canvases: List[tk.Canvas] = []
             for col, (icon, title, var, color) in enumerate(kpi_defs):
-                card = self._card(row, 0, col, padx=(0, 10) if col < 3 else (0, 0))
+                card = self._card(row, 0, col, padx=(0, 8) if col < 4 else (0, 0))
                 card.columnconfigure(1, weight=1)
                 if icon == "gpa":
                     icon_widget = self._make_gpa_kpi_icon(card)
@@ -845,6 +847,8 @@ def run_gui() -> None:
                     icon_widget = ctk.CTkLabel(card, text=icon,
                                                font=self._fonts["large"],
                                                text_color=color, width=44)
+                    if title == "Konflikte":
+                        self._conflict_icon = icon_widget
                 icon_widget.grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
                 ctk.CTkLabel(card, text=title,
                              font=self._fonts["body"],
@@ -1283,8 +1287,16 @@ def run_gui() -> None:
             if datapoints_count is not None and ets_count is not None:
                 self.kpi_vars["gpa"].set(f"{datapoints_count:,}".replace(",", "."))
                 self.kpi_vars["ets"].set(f"{ets_count:,}".replace(",", "."))
+            conflicts = sum(1 for c in self.candidates
+                            if c.status == SyncStatus.ADRESSKONFLIKT)
             self.kpi_vars["diff"].set(str(total))
             self.kpi_vars["selected"].set(str(selected))
+            self.kpi_vars["conflicts"].set(str(conflicts))
+            if hasattr(self, "_conflict_icon"):
+                if conflicts > 0:
+                    self._conflict_icon.configure(text="❌", text_color="#dc2626")
+                else:
+                    self._conflict_icon.configure(text="✅", text_color="#16a34a")
             if hasattr(self, "table_count_var"):
                 self.table_count_var.set(f"Zeilen: {visible} von {total}")
 
