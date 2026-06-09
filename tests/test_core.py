@@ -375,7 +375,7 @@ class TestBuildSyncCandidates(unittest.TestCase):
         self.assertIn("Gleicher Name (2)", new_names)
 
     def test_duplicate_write_address_marked_as_conflict(self):
-        # Datenfehler in der GPA: zwei Datenpunkte tragen dieselbe Write-GA 2/6/4.
+        # Adress-Konflikt – bitte prüfen: zwei Datenpunkte tragen dieselbe Write-GA 2/6/4.
         # Beide würden auf denselben ETS-Namen umbenannt → Adress-Konflikt statt "(N)".
         val = tool.ga_to_int("2/6/4")
         candidates = tool.build_sync_candidates(

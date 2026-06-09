@@ -72,9 +72,10 @@ def build_sync_candidates(datapoints: Sequence[GpaDatapoint], ets_map: Dict[int,
     not_in_ets_rows: List[SyncCandidate] = []
     conflict_rows: List[SyncCandidate] = []
 
-    # Datenfehler in der GPA: mehrere Datenpunkte tragen DIESELBE write_group_address,
+    # Adress-Konflikt – bitte prüfen: mehrere Datenpunkte tragen DIESELBE write_group_address,
     # die zudem im ETS existiert. Sie würden alle auf denselben ETS-Namen umbenannt.
     # Statt das still über "(N)" aufzulösen, werden sie als Adress-Konflikt markiert.
+    # (Write-Duplikate sind meist ein GPA-Fehler, können aber in Randfällen gewollt sein.)
     write_counts = Counter(
         dp.write_group_address for dp in datapoints
         if dp.write_group_address and dp.write_group_address in ets_map

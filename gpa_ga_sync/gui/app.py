@@ -1274,7 +1274,7 @@ def run_gui() -> None:
                 '• Reine Leerzeichen-Unterschiede werden als „Leerzeichen“ markiert.\n'
                 '• GPA-Adressen ohne Treffer im ETS-Export werden als „Nicht in ETS“ angezeigt.\n'
                 '• Mehrere GPA-Datenpunkte mit identischer Gruppenadresse werden als „Adress-Konflikt“ '
-                'angezeigt und nicht automatisch umbenannt (Datenfehler in der GPA).')
+                'angezeigt und nicht automatisch umbenannt – bitte prüfen.')
 
         # ── Status / KPIs ──────────────────────────────────────────────────────
 
