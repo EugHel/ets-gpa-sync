@@ -23,7 +23,7 @@
 
 ## 🚧 Status: Beta
 
-Eine erste Beta-Version (**v0.9.0-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) mit Code-Signing ist in Vorbereitung.
+Eine erste Beta-Version (**v0.9.1-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) mit Code-Signing ist in Vorbereitung.
 
 ---
 
