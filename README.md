@@ -54,7 +54,7 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** nutzt, kenn
 
 ## 📥 Download
 
-**[⬇️ ETS GPA Sync v0.9.0-beta herunterladen](https://github.com/EugHel/ets-gpa-sync/releases/tag/v0.9.0-beta)**
+**[⬇️ ETS GPA Sync v0.9.1-beta herunterladen](https://github.com/EugHel/ets-gpa-sync/releases/tag/v0.9.1-beta)**
 
 ZIP entpacken → `ETS-GPA-Sync.exe` starten. Kein Python erforderlich.
 Getestet auf Windows 10 und 11.
