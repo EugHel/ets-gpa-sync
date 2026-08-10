@@ -53,6 +53,27 @@ def _channelview_xml(name: str, channel_type: str) -> str:
     )
 
 
+def _location_assoc_xml(href: str) -> str:
+    """Location-Assoc einer Channelview: zweiter <End> zeigt (cat=typedelement) auf die Standort-Kette."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<Association>'
+        '<End cat="location" href="channelviews/$cv1/entity" />'
+        f'<End cat="typedelement" href="{href}" />'
+        '</Association>'
+    )
+
+
+def _typedelement_xml(name: str, subtype: str) -> str:
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<conf:TypedElement {_NS}>'
+        f'<conf:EntityName>{name}</conf:EntityName>'
+        f'<conf:Subtype>{subtype}</conf:Subtype>'
+        '</conf:TypedElement>'
+    )
+
+
 def _write_gpa(entries: dict) -> Path:
     """Schreibt ein GPA-ZIP mit {pfad: text} in eine Temp-Datei und gibt den Pfad zurück."""
     fd, path = tempfile.mkstemp(suffix=".gpa")
@@ -156,7 +177,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
             "prj/channelviews/$cv1.xml": _channelview_xml("Kugel Beet r.", "Switch"),
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(views, [("Kugel Beet r.", "Switch")])
+        self.assertEqual(views, [("Kugel Beet r.", "Switch", "")])
 
     def test_resolve_multiple_views(self):
         gpa = self._gpa({
@@ -167,7 +188,8 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
             "prj/channelviews/$cv2.xml": _channelview_xml("Ansicht B", "Dimmer"),
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(sorted(views), [("Ansicht A", "Switch"), ("Ansicht B", "Dimmer")])
+        self.assertEqual(sorted(views),
+                         [("Ansicht A", "Switch", ""), ("Ansicht B", "Dimmer", "")])
 
     def test_resolve_none(self):
         gpa = self._gpa({
@@ -176,6 +198,57 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
         self.assertEqual(views, [])
 
+    def test_resolve_with_location(self):
+        gpa = self._gpa({
+            "prj/knxdatapoints/$dp1.xml": _datapoint_xml("DP1"),
+            "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": _assoc_xml("cv1"),
+            "prj/channelviews/$cv1.xml": _channelview_xml("Kugel Beet r.", "Switch"),
+            "prj/channelviews/$cv1/locations/$loc1.assoc":
+                _location_assoc_xml(
+                    "typedelements/$root/typedelements/$floor1/typedelements/$room1"),
+            "prj/typedelements/$floor1.xml": _typedelement_xml("Erdgeschoss", "Floor"),
+            "prj/typedelements/$room1.xml": _typedelement_xml("Deko", "Room"),
+        })
+        views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
+        self.assertEqual(
+            views,
+            [("Kugel Beet r.", "Switch",
+              "Gebäude und Geräte → Erdgeschoss → Deko (Raum)")])
+
+    def test_resolve_location_with_project_prefix(self):
+        """href mit vorangestelltem projects/$<proj>/-Präfix: Root bleibt Root, kein Extra-Level."""
+        gpa = self._gpa({
+            "prj/knxdatapoints/$dp1.xml": _datapoint_xml("DP1"),
+            "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": _assoc_xml("cv1"),
+            "prj/channelviews/$cv1.xml": _channelview_xml("Kugel Beet r.", "Switch"),
+            "prj/channelviews/$cv1/locations/$loc1.assoc":
+                _location_assoc_xml(
+                    "projects/$proj/typedelements/$root/"
+                    "typedelements/$floor1/typedelements/$room1"),
+            "prj/typedelements/$floor1.xml": _typedelement_xml("Erdgeschoss", "Floor"),
+            "prj/typedelements/$room1.xml": _typedelement_xml("Deko", "Room"),
+        })
+        views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
+        self.assertEqual(
+            views,
+            [("Kugel Beet r.", "Switch",
+              "Gebäude und Geräte → Erdgeschoss → Deko (Raum)")])
+
+    def test_resolve_location_missing_element_falls_back_to_empty(self):
+        """Fehlt eine typedelement-XML, wird der Pfad weggelassen (Rest bleibt)."""
+        gpa = self._gpa({
+            "prj/knxdatapoints/$dp1.xml": _datapoint_xml("DP1"),
+            "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": _assoc_xml("cv1"),
+            "prj/channelviews/$cv1.xml": _channelview_xml("Kugel Beet r.", "Switch"),
+            "prj/channelviews/$cv1/locations/$loc1.assoc":
+                _location_assoc_xml(
+                    "typedelements/$root/typedelements/$floor1/typedelements/$room1"),
+            "prj/typedelements/$floor1.xml": _typedelement_xml("Erdgeschoss", "Floor"),
+            # $room1.xml fehlt bewusst
+        })
+        views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
+        self.assertEqual(views, [("Kugel Beet r.", "Switch", "")])
+
     def test_orphan_assoc_counts_as_unknown(self):
         """Verweist eine .assoc auf eine nicht auffindbare Channelview → 'unbekannte Ansicht'."""
         gpa = self._gpa({
@@ -183,7 +256,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
             "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": _assoc_xml("does_not_exist"),
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(views, [("unbekannte Ansicht", "")])
+        self.assertEqual(views, [("unbekannte Ansicht", "", "")])
 
     def test_broken_assoc_counts_as_unknown(self):
         """Defekte/unlesbare .assoc → 'unbekannte Ansicht', keine Exception."""
@@ -192,7 +265,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
             "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": "<kein gueltiges xml",
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(views, [("unbekannte Ansicht", "")])
+        self.assertEqual(views, [("unbekannte Ansicht", "", "")])
 
 
 if __name__ == "__main__":

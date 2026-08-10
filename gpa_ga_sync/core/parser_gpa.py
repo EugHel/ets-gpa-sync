@@ -22,6 +22,14 @@ _ASSOC_RE = re.compile(
 # href innerhalb einer .assoc, der auf die verwendende Channelview zeigt.
 _CHANNELVIEW_HREF_RE = re.compile(r"channelviews/\$([^/]+)", re.IGNORECASE)
 
+# Alle typedelement-UIDs (Root/Ebene1/Ebene2/…) eines Location-hrefs in Reihenfolge.
+# Bewusst über alle Vorkommen statt String-Split, damit ein evtl. vorangestellter
+# "projects/$<proj>/"-Präfix nicht fälschlich als erste Ebene gezählt wird.
+_TYPEDELEMENT_HREF_RE = re.compile(r"typedelements/\$([^/]+)", re.IGNORECASE)
+# Verdeutschung der Subtypes der untersten Standort-Ebene.
+_SUBTYPE_DE = {"Floor": "Etage", "Room": "Raum", "Building": "Gebäude"}
+_LOCATION_ROOT = "Gebäude und Geräte"
+
 
 def read_zip_text(zf: zipfile.ZipFile, info: zipfile.ZipInfo, password: Optional[str] = None) -> Tuple[str, str]:
     pwd = password.encode("utf-8") if password else None
@@ -86,16 +94,87 @@ def parse_gpa_datapoints(gpa_path: Path, password: Optional[str] = None) -> List
     return datapoints
 
 
+def _resolve_location_path(
+    zf: zipfile.ZipFile,
+    name_by_normalized: Dict[str, str],
+    channelview_uid: str,
+    password: Optional[str] = None,
+) -> str:
+    """Ermittelt den vollen Gebäude-Standort einer Channelview (lazy, pro Klick).
+
+    channelviews/$<cv>/locations/$<assoc>.assoc → zweiter <End cat="typedelement">
+    liefert einen href über mehrere /typedelements/$<uid>-Ebenen. Jede Ebene (außer
+    dem Root) wird zu ihrem EntityName aufgelöst, die unterste zusätzlich verdeutscht
+    per Subtype. Rückgabe z. B. "Gebäude und Geräte → Erdgeschoss → Deko (Raum)".
+    Bei fehlendem locations/-Ordner oder Auflösungsfehler: "" (Pfad wird weggelassen).
+    """
+    loc_prefix = f"channelviews/${channelview_uid}/locations/".lower()
+    loc_assoc = next(
+        (real for norm, real in name_by_normalized.items()
+         if loc_prefix in norm and norm.endswith(".assoc")),
+        None,
+    )
+    if loc_assoc is None:
+        return ""
+    try:
+        info = zf.getinfo(loc_assoc)
+        xml_text, _enc = read_zip_text(zf, info, password)
+        root = ET.fromstring(xml_text)
+    except Exception as exc:
+        _log.debug("Location-Assoc nicht lesbar (%s): %s", loc_assoc, exc)
+        return ""
+
+    href = ""
+    for elem in root.iter():
+        if elem.get("cat") == "typedelement":
+            href = elem.get("href", "")
+            break
+    uids = _TYPEDELEMENT_HREF_RE.findall(href.replace("\\", "/"))
+    if len(uids) < 2:  # nur Root, keine anzeigbare Ebene
+        return ""
+
+    names: List[str] = []
+    last_subtype = ""
+    for uid in uids[1:]:  # erstes Element = Root/Standortbestimmung → überspringen
+        key = f"typedelements/${uid}.xml".lower()
+        real = next(
+            (r for norm, r in name_by_normalized.items() if norm.endswith(key)),
+            None,
+        )
+        if real is None:
+            return ""
+        try:
+            te_info = zf.getinfo(real)
+            te_text, _enc = read_zip_text(zf, te_info, password)
+            te_root = ET.fromstring(te_text)
+        except Exception as exc:
+            _log.debug("Typedelement nicht lesbar (%s): %s", real, exc)
+            return ""
+        entity = find_text_by_local_name(te_root, "EntityName")
+        if not entity:
+            return ""
+        names.append(entity)
+        last_subtype = find_text_by_local_name(te_root, "Subtype") or ""
+
+    if not names:
+        return ""
+    path = _LOCATION_ROOT + "".join(f" → {n}" for n in names)
+    if last_subtype:
+        path += f" ({_SUBTYPE_DE.get(last_subtype, last_subtype)})"
+    return path
+
+
 def resolve_cross_reference_views(
     gpa_path: Path, datapoint_zip_path: str, password: Optional[str] = None
-) -> List[Tuple[str, str]]:
-    """Löst die Verwendungen eines Datenpunkts zu Channelview-Namen auf (lazy, pro Klick).
+) -> List[Tuple[str, str, str]]:
+    """Löst die Verwendungen eines Datenpunkts zu Channelview-Ansichten auf (lazy, pro Klick).
 
-    Rückgabe: Liste von (EntityName, ChannelTypeId). Verwaiste .assoc-Verweise
-    (href zeigt auf nicht auffindbare Channelview) werden als
-    ("unbekannte Ansicht", "") mitgezählt.
+    Rückgabe: Liste von (EntityName, ChannelTypeId, LocationPath). LocationPath ist
+    der volle Gebäude-Standort (siehe _resolve_location_path) oder "" wenn nicht
+    ermittelbar. Verwaiste .assoc-Verweise (href zeigt auf nicht auffindbare
+    Channelview) werden als ("unbekannte Ansicht", "", "") mitgezählt.
     """
-    results: List[Tuple[str, str]] = []
+    results: List[Tuple[str, str, str]] = []
     prefix = _datapoint_stem(datapoint_zip_path) + "/datapointviews/"
     prefix_lower = prefix.lower()
     with zipfile.ZipFile(gpa_path, "r") as zf:
@@ -126,7 +205,7 @@ def resolve_cross_reference_views(
                 _log.warning("Assoc übersprungen (%s): %s", assoc_name, exc)
 
             if not channelview_uid:
-                results.append(("unbekannte Ansicht", ""))
+                results.append(("unbekannte Ansicht", "", ""))
                 continue
 
             cv_key = f"channelviews/${channelview_uid}.xml".lower()
@@ -135,7 +214,7 @@ def resolve_cross_reference_views(
                 None,
             )
             if cv_name is None:
-                results.append(("unbekannte Ansicht", ""))
+                results.append(("unbekannte Ansicht", "", ""))
                 continue
             try:
                 cv_info = zf.getinfo(cv_name)
@@ -143,8 +222,10 @@ def resolve_cross_reference_views(
                 cv_root = ET.fromstring(cv_text)
                 entity = find_text_by_local_name(cv_root, "EntityName") or "(ohne Name)"
                 channel_type = find_text_by_local_name(cv_root, "ChannelTypeId") or ""
-                results.append((entity, channel_type))
+                location = _resolve_location_path(
+                    zf, name_by_normalized, channelview_uid, password)
+                results.append((entity, channel_type, location))
             except Exception as exc:
                 _log.warning("Channelview übersprungen (%s): %s", cv_name, exc)
-                results.append(("unbekannte Ansicht", ""))
+                results.append(("unbekannte Ansicht", "", ""))
     return results

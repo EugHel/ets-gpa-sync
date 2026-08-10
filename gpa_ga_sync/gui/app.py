@@ -219,7 +219,7 @@ def run_gui() -> None:
             self._fonts = get_fonts()
             self.title("ETS GPA Sync")
             self.geometry("1420x820")
-            self.minsize(1050, 600)
+            self.minsize(1120, 600)
 
             self._theme_mode: str = _initial_theme
 
@@ -976,7 +976,7 @@ def run_gui() -> None:
             self.tree.column("status", width=120, minwidth=100, anchor="w",      stretch=False)
             self.tree.column("ga",     width=100, minwidth=90,  anchor="w",      stretch=False)
             self.tree.column("old",    width=300, minwidth=180, anchor="w",      stretch=True)
-            self.tree.column("new",    width=420, minwidth=240, anchor="w",      stretch=True)
+            self.tree.column("new",    width=320, minwidth=240, anchor="w",      stretch=True)
             self.tree.column("xref",   width=90,  minwidth=70,  anchor="center", stretch=False)
             self.tree.grid(row=0, column=0, sticky="nsew")
 
@@ -987,6 +987,7 @@ def run_gui() -> None:
             self.table_count_var = tk.StringVar(value="")
 
             self.tree.bind("<Button-1>",       self.on_tree_click)
+            self.tree.bind("<Motion>",         self._on_tree_motion)
             self.tree.bind("<Double-1>",       self.on_tree_double_click)
             self.tree.bind("<F2>",             lambda _e: self.edit_focused_new_name())
             self.tree.bind("<space>",          lambda _e: self.toggle_selected_rows())
@@ -1485,7 +1486,9 @@ def run_gui() -> None:
                 # Verweise: nur für Zeilen mit echtem Datenpunkt (zip_path) anwendbar.
                 if c.zip_path:
                     xref = self.cross_ref_by_path.get(c.zip_path, 0)
-                    xref_text = str(xref)
+                    # Unterstrichen darstellen (Link-Optik), da ttk.Treeview keine
+                    # zellgenaue Schrift/Farbe erlaubt – kombiniert mit hand2-Cursor.
+                    xref_text = self._as_link_text(str(xref))
                     if xref == 0:
                         tags.append("no_xref")
                 else:
@@ -1542,6 +1545,32 @@ def run_gui() -> None:
                     self._open_xref_popup(c)
                     return "break"
             return None
+
+        @staticmethod
+        def _as_link_text(text: str) -> str:
+            """Unterstreicht Text zeichenweise via U+0332 (Link-Optik in der Zelle)."""
+            return "".join(ch + "̲" for ch in text)
+
+        def _is_xref_link_row(self, row: str) -> bool:
+            """True, wenn die Verweise-Zelle dieser Zeile klickbar ist (Datenpunkt vorhanden)."""
+            try:
+                return bool(self.candidates[int(row)].zip_path)
+            except (ValueError, IndexError):
+                return False
+
+        def _on_tree_motion(self, event) -> None:
+            """Zeigt hand2-Cursor über klickbaren Verweise-Zellen, sonst Standardcursor."""
+            region = self.tree.identify("region", event.x, event.y)
+            column = self.tree.identify_column(event.x)
+            row    = self.tree.identify_row(event.y)
+            over_link = (
+                region == "cell" and bool(row)
+                and self._is_column(column, "xref")
+                and self._is_xref_link_row(row)
+            )
+            cursor = "hand2" if over_link else ""
+            if self.tree.cget("cursor") != cursor:
+                self.tree.configure(cursor=cursor)
 
         def _is_column(self, identify_result: str, name: str) -> bool:
             """Prüft, ob eine identify_column()-Kennung (#N) der Datenspalte 'name' entspricht."""
@@ -1798,12 +1827,21 @@ def run_gui() -> None:
                              wraplength=400).grid(
                     row=0, column=0, sticky="w", padx=6, pady=6)
             else:
-                for i, (entity, channel_type) in enumerate(views):
+                for i, (entity, channel_type, location) in enumerate(views):
                     label = entity if not channel_type else f"{entity}   ·   {channel_type}"
-                    ctk.CTkLabel(body, text=f"•  {label}",
+                    entry = ctk.CTkFrame(body, fg_color="transparent")
+                    entry.grid(row=i, column=0, sticky="ew", padx=6, pady=(2, 4))
+                    entry.columnconfigure(0, weight=1)
+                    ctk.CTkLabel(entry, text=f"•  {label}",
                                  font=self._fonts["body"], justify="left",
                                  anchor="w", wraplength=400).grid(
-                        row=i, column=0, sticky="ew", padx=6, pady=2)
+                        row=0, column=0, sticky="ew")
+                    if location:
+                        ctk.CTkLabel(entry, text=f"      📍  {location}",
+                                     font=self._fonts["small"], justify="left",
+                                     text_color=("gray30", "gray70"),
+                                     anchor="w", wraplength=390).grid(
+                            row=1, column=0, sticky="ew")
 
             ok_btn = ctk.CTkButton(dialog, text="Schließen", fg_color=ACCENT,
                                    hover_color=ACCENT_DARK, text_color="white",
