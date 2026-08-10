@@ -40,6 +40,7 @@ class GpaDatapoint:
     read_group_address: Optional[int]
     write_group_address: Optional[int]
     listener_group_addresses: Tuple[int, ...]
+    cross_reference_count: int = 0
 
     @property
     def candidate_group_addresses(self) -> Tuple[int, ...]:

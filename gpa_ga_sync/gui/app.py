@@ -26,6 +26,7 @@ from ..core import (
     export_candidates_csv,
     parse_ets_ga_export,
     parse_gpa_datapoints,
+    resolve_cross_reference_views,
     write_updated_gpa,
 )
 from ..config import LICENSING_ENABLED, APP_VERSION
@@ -69,6 +70,8 @@ _PALETTE: Dict[str, Dict[str, str]] = {
         "ambiguous_fg": "#a78bfa",
         "conflict_fg":  "#f87171",
         "progress_bg":  "#3d3d3d",
+        "no_xref_bg":   "#4a4526",
+        "no_xref_fg":   "#f0e6b0",
     },
     "light": {
         "bg":           "#f6f8fb",
@@ -90,6 +93,8 @@ _PALETTE: Dict[str, Dict[str, str]] = {
         "ambiguous_fg": "#7c3aed",
         "conflict_fg":  "#dc2626",
         "progress_bg":  "#e0e0e0",
+        "no_xref_bg":   "#fff3c4",
+        "no_xref_fg":   "#7a5c00",
     },
 }
 
@@ -241,6 +246,7 @@ def run_gui() -> None:
             }
             self.candidates: List[SyncCandidate] = []
             self.datapoint_name_by_path: Dict[str, str] = {}
+            self.cross_ref_by_path: Dict[str, int] = {}
             self.visible_iids: List[str] = []
             self._edit_entry: Optional[tk.Entry] = None
             self.sort_column: Optional[str] = None
@@ -251,6 +257,7 @@ def run_gui() -> None:
                 "ga":    "GA",
                 "old":   "Aktueller GPA-Name",
                 "new":   "Neuer GPA-Name aus ETS",
+                "xref":  "Verweise",
             }
 
             if LICENSING_ENABLED:
@@ -322,6 +329,8 @@ def run_gui() -> None:
                 self.tree.tag_configure("unselected_sync", foreground=p["muted"])
                 self.tree.tag_configure("ambiguous",     foreground=p["ambiguous_fg"])
                 self.tree.tag_configure("conflict",      foreground=p["conflict_fg"])
+                self.tree.tag_configure("no_xref",       background=p["no_xref_bg"],
+                                        foreground=p["no_xref_fg"])
 
         def _refresh_legacy_widgets(self) -> None:
             """Aktualisiert tk/ttk-Widgets (kein Auto-Recolor bei CTK-Theme-Wechsel)."""
@@ -959,7 +968,7 @@ def run_gui() -> None:
             table_frame.columnconfigure(0, weight=1)
             table_frame.rowconfigure(0, weight=1)
 
-            cols = ("status", "ga", "old", "new")
+            cols = ("status", "ga", "old", "new", "xref")
             self.tree = ttk.Treeview(table_frame, columns=cols,
                                      show="tree headings", selectmode="extended")
             self._refresh_headings()
@@ -968,6 +977,7 @@ def run_gui() -> None:
             self.tree.column("ga",     width=100, minwidth=90,  anchor="w",      stretch=False)
             self.tree.column("old",    width=300, minwidth=180, anchor="w",      stretch=True)
             self.tree.column("new",    width=420, minwidth=240, anchor="w",      stretch=True)
+            self.tree.column("xref",   width=90,  minwidth=70,  anchor="center", stretch=False)
             self.tree.grid(row=0, column=0, sticky="nsew")
 
             yscroll = ctk.CTkScrollbar(table_frame, command=self.tree.yview)
@@ -1217,7 +1227,7 @@ def run_gui() -> None:
         def _refresh_headings(self) -> None:
             if not hasattr(self, "tree"):
                 return
-            for col in ("#0", "status", "ga", "old", "new"):
+            for col in ("#0", "status", "ga", "old", "new", "xref"):
                 try:
                     self.tree.heading(col, text=self._heading_text(col), anchor="w",
                                       command=lambda c=col: self.sort_by_column(c))
@@ -1243,6 +1253,10 @@ def run_gui() -> None:
                     return (c.current_name.lower(), c.group_address_value)
                 if column == "new":
                     return (c.new_name.lower(), c.group_address_value)
+                if column == "xref":
+                    # "nicht anwendbar" (kein zip_path) ans Ende schieben (-1).
+                    count = self.cross_ref_by_path.get(c.zip_path, -1) if c.zip_path else -1
+                    return (count, c.current_name.lower())
                 return (c.group_address_value, c.current_name.lower())
 
             self.candidates.sort(key=key, reverse=self.sort_reverse)
@@ -1405,6 +1419,7 @@ def run_gui() -> None:
                       len(datapoints), len(ets_map), len(candidates))
             self.candidates = candidates
             self.datapoint_name_by_path = {dp.zip_path: dp.entity_name for dp in datapoints}
+            self.cross_ref_by_path = {dp.zip_path: dp.cross_reference_count for dp in datapoints}
             self.sort_column = "ga"
             self.sort_reverse = False
             self._set_busy(False)
@@ -1467,8 +1482,17 @@ def run_gui() -> None:
                 if c.status == SyncStatus.ADRESSKONFLIKT:
                     mark = "!"
                     tags.append("conflict")
+                # Verweise: nur für Zeilen mit echtem Datenpunkt (zip_path) anwendbar.
+                if c.zip_path:
+                    xref = self.cross_ref_by_path.get(c.zip_path, 0)
+                    xref_text = str(xref)
+                    if xref == 0:
+                        tags.append("no_xref")
+                else:
+                    xref_text = ""
                 self.tree.insert("", "end", iid=iid, text=mark,
-                                 values=(c.status, c.group_address, c.current_name, c.new_name),
+                                 values=(c.status, c.group_address, c.current_name,
+                                         c.new_name, xref_text),
                                  tags=tuple(tags))
                 self.visible_iids.append(iid)
                 visible_counter += 1
@@ -1512,7 +1536,21 @@ def run_gui() -> None:
                         self.tree.selection_set(row)
                         self.tree.focus(row)
                     return "break"
+            if region == "cell" and row and self._is_column(column, "xref"):
+                c = self.candidates[int(row)]
+                if c.zip_path:
+                    self._open_xref_popup(c)
+                    return "break"
             return None
+
+        def _is_column(self, identify_result: str, name: str) -> bool:
+            """Prüft, ob eine identify_column()-Kennung (#N) der Datenspalte 'name' entspricht."""
+            try:
+                idx = int(identify_result.replace("#", ""))
+            except ValueError:
+                return False
+            data_cols = self.tree["columns"]
+            return 1 <= idx <= len(data_cols) and data_cols[idx - 1] == name
 
         def on_tree_double_click(self, event) -> Optional[str]:
             region = self.tree.identify("region", event.x, event.y)
@@ -1707,6 +1745,80 @@ def run_gui() -> None:
             self.detail_vars["source"].set(c.source_field)
             self.detail_vars["old"].set(c.current_name)
             self.detail_vars["new"].set(c.new_name)
+
+        # ── Querverweise-Popup ─────────────────────────────────────────────────
+
+        def _open_xref_popup(self, candidate: SyncCandidate) -> None:
+            """Zeigt die Channelviews, in denen der Datenpunkt verwendet wird."""
+            count = self.cross_ref_by_path.get(candidate.zip_path, 0)
+            gpa_text = self.gpa_var.get().strip()
+            views: List = []
+            error: Optional[str] = None
+            if count and gpa_text:
+                try:
+                    views = resolve_cross_reference_views(
+                        Path(gpa_text), candidate.zip_path, self._pwd())
+                except Exception as exc:  # pragma: no cover - defensiv
+                    _log.warning("Querverweise konnten nicht aufgelöst werden: %s", exc)
+                    error = str(exc)
+
+            dialog = ctk.CTkToplevel(self)
+            dialog.title("Verweise")
+            dialog.geometry("460x420")
+            dialog.transient(self)
+            dialog.columnconfigure(0, weight=1)
+            dialog.rowconfigure(2, weight=1)
+
+            ctk.CTkLabel(dialog, text="🔗  Verwendungen",
+                         font=self._fonts["normal"]).grid(
+                row=0, column=0, padx=20, pady=(18, 4), sticky="w")
+
+            ctk.CTkLabel(dialog,
+                         text=f"Datenpunkt: {candidate.current_name}",
+                         font=self._fonts["body"], justify="left",
+                         text_color=("gray30", "gray70"), wraplength=410).grid(
+                row=1, column=0, padx=20, pady=(0, 8), sticky="w")
+
+            body = ctk.CTkScrollableFrame(dialog, fg_color="transparent")
+            body.grid(row=2, column=0, padx=14, pady=(0, 8), sticky="nsew")
+            body.columnconfigure(0, weight=1)
+
+            if error is not None:
+                ctk.CTkLabel(body,
+                             text=f"⚠  Auflösung fehlgeschlagen:\n{error}",
+                             font=self._fonts["body"], justify="left",
+                             text_color=("#7a4000", "#ffb84d"), wraplength=400).grid(
+                    row=0, column=0, sticky="w", padx=6, pady=6)
+            elif not views:
+                ctk.CTkLabel(body,
+                             text="Keine Verwendung gefunden.\n"
+                                  "Der Datenpunkt wird in keiner Visualisierung angezeigt "
+                                  "und ist evtl. lösch-/aufräumbar.",
+                             font=self._fonts["body"], justify="left",
+                             wraplength=400).grid(
+                    row=0, column=0, sticky="w", padx=6, pady=6)
+            else:
+                for i, (entity, channel_type) in enumerate(views):
+                    label = entity if not channel_type else f"{entity}   ·   {channel_type}"
+                    ctk.CTkLabel(body, text=f"•  {label}",
+                                 font=self._fonts["body"], justify="left",
+                                 anchor="w", wraplength=400).grid(
+                        row=i, column=0, sticky="ew", padx=6, pady=2)
+
+            ok_btn = ctk.CTkButton(dialog, text="Schließen", fg_color=ACCENT,
+                                   hover_color=ACCENT_DARK, text_color="white",
+                                   command=dialog.destroy)
+            ok_btn.grid(row=3, column=0, padx=20, pady=(0, 18), sticky="e")
+
+            dialog.bind("<Return>", lambda _e: dialog.destroy())
+            dialog.bind("<Escape>", lambda _e: dialog.destroy())
+
+            dialog.update_idletasks()
+            x = self.winfo_x() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
+            y = self.winfo_y() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+            dialog.after(100, dialog.grab_set)
+            dialog.after(120, ok_btn.focus_set)
 
         # ── CSV-Export ─────────────────────────────────────────────────────────
 
