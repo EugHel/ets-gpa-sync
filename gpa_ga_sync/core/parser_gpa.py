@@ -166,15 +166,19 @@ def _resolve_location_path(
 
 def resolve_cross_reference_views(
     gpa_path: Path, datapoint_zip_path: str, password: Optional[str] = None
-) -> List[Tuple[str, str, str]]:
+) -> List[Tuple[str, str, str, str]]:
     """Löst die Verwendungen eines Datenpunkts zu Channelview-Ansichten auf (lazy, pro Klick).
 
-    Rückgabe: Liste von (EntityName, ChannelTypeId, LocationPath). LocationPath ist
-    der volle Gebäude-Standort (siehe _resolve_location_path) oder "" wenn nicht
-    ermittelbar. Verwaiste .assoc-Verweise (href zeigt auf nicht auffindbare
-    Channelview) werden als ("unbekannte Ansicht", "", "") mitgezählt.
+    Rückgabe: Liste von (EntityName, ChannelTypeId, FunctionType, LocationPath).
+    FunctionType ist der <conf:Urn>-Wert der Channelview (z. B.
+    "de.gira.schema.functions.Covering") und für alle echten Channelviews zuverlässig
+    vorhanden; zusammen mit ChannelTypeId bildet er den eindeutigen Schlüssel für den
+    deutschen Anzeigenamen. LocationPath ist der volle Gebäude-Standort (siehe
+    _resolve_location_path) oder "" wenn nicht ermittelbar. Verwaiste .assoc-Verweise
+    (href zeigt auf nicht auffindbare Channelview) werden als
+    ("unbekannte Ansicht", "", "", "") mitgezählt.
     """
-    results: List[Tuple[str, str, str]] = []
+    results: List[Tuple[str, str, str, str]] = []
     prefix = _datapoint_stem(datapoint_zip_path) + "/datapointviews/"
     prefix_lower = prefix.lower()
     with zipfile.ZipFile(gpa_path, "r") as zf:
@@ -205,7 +209,7 @@ def resolve_cross_reference_views(
                 _log.warning("Assoc übersprungen (%s): %s", assoc_name, exc)
 
             if not channelview_uid:
-                results.append(("unbekannte Ansicht", "", ""))
+                results.append(("unbekannte Ansicht", "", "", ""))
                 continue
 
             cv_key = f"channelviews/${channelview_uid}.xml".lower()
@@ -214,7 +218,7 @@ def resolve_cross_reference_views(
                 None,
             )
             if cv_name is None:
-                results.append(("unbekannte Ansicht", "", ""))
+                results.append(("unbekannte Ansicht", "", "", ""))
                 continue
             try:
                 cv_info = zf.getinfo(cv_name)
@@ -222,10 +226,11 @@ def resolve_cross_reference_views(
                 cv_root = ET.fromstring(cv_text)
                 entity = find_text_by_local_name(cv_root, "EntityName") or "(ohne Name)"
                 channel_type = find_text_by_local_name(cv_root, "ChannelTypeId") or ""
+                function_type = find_text_by_local_name(cv_root, "Urn") or ""
                 location = _resolve_location_path(
                     zf, name_by_normalized, channelview_uid, password)
-                results.append((entity, channel_type, location))
+                results.append((entity, channel_type, function_type, location))
             except Exception as exc:
                 _log.warning("Channelview übersprungen (%s): %s", cv_name, exc)
-                results.append(("unbekannte Ansicht", "", ""))
+                results.append(("unbekannte Ansicht", "", "", ""))
     return results

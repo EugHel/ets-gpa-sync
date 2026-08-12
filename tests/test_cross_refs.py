@@ -43,11 +43,13 @@ def _assoc_xml(channelview_uid: str) -> str:
     )
 
 
-def _channelview_xml(name: str, channel_type: str) -> str:
+def _channelview_xml(name: str, channel_type: str, function_type: str = "") -> str:
+    urn = f'<conf:Urn>{function_type}</conf:Urn>' if function_type else ''
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<conf:Channelview {_NS}>'
         f'<conf:EntityName>{name}</conf:EntityName>'
+        f'{urn}'
         f'<conf:ChannelTypeId>{channel_type}</conf:ChannelTypeId>'
         '</conf:Channelview>'
     )
@@ -174,10 +176,13 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
         gpa = self._gpa({
             "prj/knxdatapoints/$dp1.xml": _datapoint_xml("DP1"),
             "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": _assoc_xml("cv1"),
-            "prj/channelviews/$cv1.xml": _channelview_xml("Kugel Beet r.", "Switch"),
+            "prj/channelviews/$cv1.xml": _channelview_xml(
+                "Kugel Beet r.", "Switch", "de.gira.schema.functions.Switch"),
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(views, [("Kugel Beet r.", "Switch", "")])
+        self.assertEqual(
+            views,
+            [("Kugel Beet r.", "Switch", "de.gira.schema.functions.Switch", "")])
 
     def test_resolve_multiple_views(self):
         gpa = self._gpa({
@@ -189,7 +194,8 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
         self.assertEqual(sorted(views),
-                         [("Ansicht A", "Switch", ""), ("Ansicht B", "Dimmer", "")])
+                         [("Ansicht A", "Switch", "", ""),
+                          ("Ansicht B", "Dimmer", "", "")])
 
     def test_resolve_none(self):
         gpa = self._gpa({
@@ -212,7 +218,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
         self.assertEqual(
             views,
-            [("Kugel Beet r.", "Switch",
+            [("Kugel Beet r.", "Switch", "",
               "Gebäude und Geräte → Erdgeschoss → Deko (Raum)")])
 
     def test_resolve_location_with_project_prefix(self):
@@ -231,7 +237,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
         self.assertEqual(
             views,
-            [("Kugel Beet r.", "Switch",
+            [("Kugel Beet r.", "Switch", "",
               "Gebäude und Geräte → Erdgeschoss → Deko (Raum)")])
 
     def test_resolve_location_missing_element_falls_back_to_empty(self):
@@ -247,7 +253,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
             # $room1.xml fehlt bewusst
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(views, [("Kugel Beet r.", "Switch", "")])
+        self.assertEqual(views, [("Kugel Beet r.", "Switch", "", "")])
 
     def test_orphan_assoc_counts_as_unknown(self):
         """Verweist eine .assoc auf eine nicht auffindbare Channelview → 'unbekannte Ansicht'."""
@@ -256,7 +262,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
             "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": _assoc_xml("does_not_exist"),
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(views, [("unbekannte Ansicht", "", "")])
+        self.assertEqual(views, [("unbekannte Ansicht", "", "", "")])
 
     def test_broken_assoc_counts_as_unknown(self):
         """Defekte/unlesbare .assoc → 'unbekannte Ansicht', keine Exception."""
@@ -265,7 +271,7 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
             "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": "<kein gueltiges xml",
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
-        self.assertEqual(views, [("unbekannte Ansicht", "", "")])
+        self.assertEqual(views, [("unbekannte Ansicht", "", "", "")])
 
 
 if __name__ == "__main__":

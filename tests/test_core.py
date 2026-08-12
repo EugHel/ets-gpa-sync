@@ -508,5 +508,52 @@ class TestBuildPartialCandidatesConflicts(unittest.TestCase):
         self.assertEqual({r.status for r in rows}, {tool.SyncStatus.ADRESSKONFLIKT})
 
 
+class TestChannelTypeDisplayName(unittest.TestCase):
+    """(Function.Type, ChannelType) → deutscher Anzeigename inkl. Fallbacks."""
+
+    def setUp(self):
+        from gpa_ga_sync.config import channel_type_display_name
+        self.lookup = channel_type_display_name
+
+    def test_pair_hit(self):
+        self.assertEqual(
+            self.lookup("de.gira.schema.functions.Covering",
+                        "de.gira.schema.channels.BlindWithPos"),
+            "Rollladen / Jalousie")
+
+    def test_pair_disambiguates_shared_channel_type(self):
+        # Trigger teilt sich den ChannelType zwischen zwei Funktionen –
+        # das Paar liefert eindeutig unterschiedliche Namen.
+        self.assertEqual(
+            self.lookup("de.gira.schema.functions.PressAndHold",
+                        "de.gira.schema.channels.Trigger"),
+            "Taster (Drücken/Loslassen)")
+        self.assertEqual(
+            self.lookup("de.gira.schema.functions.Trigger",
+                        "de.gira.schema.channels.Trigger"),
+            "Taster (Ein/Aus)")
+
+    def test_fallback_a_unique_channel_without_function_type(self):
+        # Ohne Function.Type, aber eindeutiger ChannelType → trotzdem Name.
+        self.assertEqual(
+            self.lookup("", "de.gira.schema.channels.Switch"), "Schalter")
+        self.assertEqual(
+            self.lookup("", "de.gira.schema.channels.BlindWithPos"),
+            "Rollladen / Jalousie")
+
+    def test_fallback_b_ambiguous_without_function_type_is_none(self):
+        for ct in ("de.gira.schema.channels.Trigger",
+                   "de.gira.schema.channels.Float",
+                   "de.gira.schema.channels.Integer",
+                   "de.gira.schema.channels.DWord"):
+            self.assertIsNone(self.lookup("", ct),
+                              f"{ct} darf ohne Function.Type nicht aufgelöst werden")
+
+    def test_unknown_returns_none(self):
+        self.assertIsNone(
+            self.lookup("de.gira.schema.functions.Foo",
+                        "de.gira.schema.channels.DoesNotExist"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
