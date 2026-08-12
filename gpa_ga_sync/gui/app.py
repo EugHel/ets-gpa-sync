@@ -30,7 +30,7 @@ from ..core import (
     resolve_cross_reference_views,
     write_updated_gpa,
 )
-from ..config import LICENSING_ENABLED, APP_VERSION, CHANNEL_TYPE_NAMES
+from ..config import LICENSING_ENABLED, APP_VERSION, channel_type_display_name
 from ..licensing import (
     LicenseManager, LicenseStatus, LicenseStorage, TrialManager,
     NullProvider, get_machine_id,
@@ -1881,7 +1881,7 @@ def run_gui() -> None:
                              wraplength=400).grid(
                     row=0, column=0, sticky="w", padx=6, pady=6)
             else:
-                for i, (entity, channel_type, location) in enumerate(views):
+                for i, (entity, channel_type, function_type, location) in enumerate(views):
                     # Zeile 1: durchgehender Breadcrumb-Pfad, der mit der Kachel
                     # (Channelview) als letztem Schritt endet. Das "(Raum)"/"(Etage)"-
                     # Suffix am letzten Location-Segment wird entfernt, damit der
@@ -1896,11 +1896,12 @@ def run_gui() -> None:
                                  font=self._fonts["body"], justify="left",
                                  anchor="w", wraplength=400).grid(
                         row=0, column=0, sticky="ew")
-                    # Zeile 2: Kanaltyp als gedämpfte Nebeninfo. Wenn der deutsche
-                    # Anzeigename bekannt ist: "<Name> (<ChannelTypeId>)", sonst
-                    # Fallback auf die reine technische ID (kein "Unbekannt", kein Absturz).
+                    # Zeile 2: Kanaltyp als gedämpfte Nebeninfo. Der deutsche Name
+                    # kommt aus dem (Function.Type, ChannelType)-Lookup: "<Name>
+                    # (<ChannelTypeId>)". Ohne sicheren Treffer Fallback auf die
+                    # reine technische ID (kein "Unbekannt", kein Absturz).
                     if channel_type:
-                        german = CHANNEL_TYPE_NAMES.get(channel_type)
+                        german = channel_type_display_name(function_type, channel_type)
                         type_text = f"{german} ({channel_type})" if german else channel_type
                         ctk.CTkLabel(entry, text=f"      {type_text}",
                                      font=self._fonts["small"], justify="left",

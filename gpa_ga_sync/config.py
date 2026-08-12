@@ -50,28 +50,71 @@ FONT_SIZE_PROPERTY_LABEL = 14   # Eigenschaften-Feld-Labels (Status, GA, ...)
 # ═══════════════════════════════════════════════════════════
 # CHANNEL-TYPE-ANZEIGENAMEN (Verweise-Popup)
 # ═══════════════════════════════════════════════════════════
-# Übersetzung der technischen ChannelTypeId-URNs in die deutschen
-# Anzeigenamen der GPA-UI. Die GPA-Projektdatei selbst enthält KEINE
-# solche Zuordnung (nur englische FullName-Felder) – die deutschen Namen
-# stammen aus dem GPA-Client-Produktkatalog. Daher hier fest gepflegt.
+# Übersetzung eines Kanals in seinen deutschen GPA-Anzeigenamen. Die
+# GPA-Projektdatei selbst enthält KEINE solche Zuordnung (nur englische
+# FullName-Felder) – die deutschen Namen stammen aus der offiziellen Gira
+# GPA-Projektschnittstelle-Dokumentation ("Funktionsbeschreibungen Gira X1
+# v2.5") und sind für diese Firmware-Version vollständig.
 #
-# Deckt aktuell die 14 ChannelTypeIds ab, die in den echten Projektdateien
-# (Petermann/Niewels/Scheffer) tatsächlich vorkommen. Weiterhin potenziell
-# UNVOLLSTÄNDIG: bei Bedarf erweitern, wenn in weiteren Projekten neue
-# ChannelTypeIds auftauchen (Fallback ist die technische ID – kein Absturz).
+# Schlüssel ist das PAAR (Function.Type, ChannelType), NICHT der ChannelType
+# allein: mehrere Funktionen teilen sich denselben ChannelType (z. B. Integer,
+# DWord, Float, Trigger sind mehrdeutig). Function.Type = <conf:Urn>,
+# ChannelType = <conf:ChannelTypeId> der Channelview.
 CHANNEL_TYPE_NAMES = {
-    "de.gira.schema.channels.Switch": "Schalten",
-    "de.gira.schema.channels.KNX.Dimmer": "Dimmen",
-    "de.gira.schema.channels.BlindWithPos": "Rollladen / Jalousie",
-    "de.gira.schema.channels.KNX.HeatingCoolingSwitchable": "Heizen/Kühlen",
-    "de.gira.schema.channels.Binary": "Binärstatus",
-    "de.gira.schema.channels.Float": "Dezimalwert",
-    "de.gira.schema.channels.Byte": "Wertgeber 8 Bit",
-    "de.gira.schema.channels.DWord": "Wertgeber",
-    "de.gira.schema.channels.Percent": "Prozentwert",
-    "de.gira.schema.channels.String": "Textstatus",
-    "de.gira.schema.channels.Temperature": "Temperaturwert",
-    "de.gira.schema.channels.Trigger": "Tastenfunktion",
-    "de.gira.schema.channels.FunctionScene": "Szene",
-    "de.gira.schema.channels.Link": "IP-Link",
+    ("de.gira.schema.functions.SignedValue", "de.gira.schema.channels.Integer"): "32-Bit Wertgeber mit Vorzeichen",
+    ("de.gira.schema.functions.UnsignedValue", "de.gira.schema.channels.DWord"): "32-Bit Wertgeber ohne Vorzeichen",
+    ("de.gira.schema.functions.Unsigned8BitValue", "de.gira.schema.channels.Byte"): "8-Bit Wertgeber 0...255",
+    ("de.gira.schema.functions.Signed8BitValue", "de.gira.schema.channels.Integer"): "8-Bit Wertgeber -128...127",
+    ("de.gira.schema.functions.Audio", "de.gira.schema.channels.AudioWithPlaylist"): "Audiosteuerung",
+    ("de.gira.schema.functions.Sonos.Audio", "de.gira.schema.channels.Sonos.Audio"): "Audiosteuerung (Sonos)",
+    ("de.gira.schema.functions.Audio", "de.gira.schema.channels.AudioWithCover"): "Audiosteuerung mit Titelbild",
+    ("de.gira.schema.functions.DecimalValue", "de.gira.schema.channels.Float"): "Dezimalwertgeber",
+    ("de.gira.schema.functions.KNX.Light", "de.gira.schema.channels.KNX.Dimmer"): "Dimmer",
+    ("de.gira.schema.functions.ColoredLight", "de.gira.schema.channels.DimmerRGBW"): "Dimmer (RGB / RGBW)",
+    ("de.gira.schema.functions.TunableLight", "de.gira.schema.channels.DimmerWhite"): "Dimmer (Tunable White)",
+    ("de.gira.schema.functions.KNX.HeatingCooling", "de.gira.schema.channels.KNX.HeatingCoolingSwitchable"): "Heizen und Kühlen",
+    ("de.gira.schema.functions.Camera", "de.gira.schema.channels.Camera"): "IP Kamera",
+    ("de.gira.schema.functions.KNX.FanCoil", "de.gira.schema.channels.KNX.FanCoil"): "Klimaanlage",
+    ("de.gira.schema.functions.PercentValue", "de.gira.schema.channels.Percent"): "Prozentwertgeber",
+    ("de.gira.schema.functions.Covering", "de.gira.schema.channels.BlindWithPos"): "Rollladen / Jalousie",
+    ("de.gira.schema.functions.SaunaHeating", "de.gira.schema.channels.RoomTemperatureSwitchable"): "Saunatemperatur",
+    ("de.gira.schema.functions.Switch", "de.gira.schema.channels.Switch"): "Schalter",
+    ("de.gira.schema.functions.BinaryStatus", "de.gira.schema.channels.Binary"): "Statusanzeige Binär",
+    ("de.gira.schema.functions.NumericFloatStatus", "de.gira.schema.channels.Float"): "Statusanzeige Dezimal",
+    ("de.gira.schema.functions.NumericSignedStatus", "de.gira.schema.channels.Integer"): "Statusanzeige mit Vorzeichen",
+    ("de.gira.schema.functions.NumericUnsignedStatus", "de.gira.schema.channels.DWord"): "Statusanzeige ohne Vorzeichen",
+    ("de.gira.schema.functions.TextStatus", "de.gira.schema.channels.String"): "Statusanzeige Text",
+    ("de.gira.schema.functions.Scene", "de.gira.schema.channels.SceneControl"): "Szenennebenstelle",
+    ("de.gira.schema.functions.Scene", "de.gira.schema.channels.SceneSet"): "Szenenset",
+    ("de.gira.schema.functions.PressAndHold", "de.gira.schema.channels.Trigger"): "Taster (Drücken/Loslassen)",
+    ("de.gira.schema.functions.Trigger", "de.gira.schema.channels.Trigger"): "Taster (Ein/Aus)",
+    ("de.gira.schema.functions.TemperatureValue", "de.gira.schema.channels.Temperature"): "Temperaturwertgeber",
+    ("de.gira.schema.functions.Link", "de.gira.schema.channels.Link"): "URL-Aufruf",
 }
+
+# Fallback A: ChannelType → Name, aber NUR für ChannelTypes, die in der Tabelle
+# eindeutig sind (genau ein Eintrag). Mehrdeutige (Integer/DWord/Float/Trigger)
+# fehlen hier bewusst und lösen ohne Function.Type keinen Namen aus.
+_CHANNEL_TYPE_COUNTS: dict = {}
+for _func, _chan in CHANNEL_TYPE_NAMES:
+    _CHANNEL_TYPE_COUNTS[_chan] = _CHANNEL_TYPE_COUNTS.get(_chan, 0) + 1
+_UNIQUE_CHANNEL_TYPE_NAMES = {
+    _chan: _name
+    for (_func, _chan), _name in CHANNEL_TYPE_NAMES.items()
+    if _CHANNEL_TYPE_COUNTS[_chan] == 1
+}
+
+
+def channel_type_display_name(function_type: str, channel_type: str):
+    """Deutscher Anzeigename für einen Kanal, oder None wenn kein sicherer Treffer.
+
+    - Primär: exakter Lookup über das Paar (Function.Type, ChannelType).
+    - Fallback A: fehlt der Function.Type, aber der ChannelType ist eindeutig
+      (nur ein Tabelleneintrag) → dessen Name.
+    - Fallback B: mehrdeutig ohne Function.Type oder komplett unbekannt → None
+      (der Aufrufer zeigt dann nur die technische ChannelTypeId).
+    """
+    name = CHANNEL_TYPE_NAMES.get((function_type, channel_type))
+    if name:
+        return name
+    return _UNIQUE_CHANNEL_TYPE_NAMES.get(channel_type)
