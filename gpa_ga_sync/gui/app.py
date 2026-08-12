@@ -19,6 +19,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from ..core import (
     EtsGroupAddress,
     EtsProjectPasswordRequired,
+    GpaCrossRefIndex,
     GpaDatapoint,
     SyncCandidate,
     SyncStatus,
@@ -248,6 +249,11 @@ def run_gui() -> None:
             self.candidates: List[SyncCandidate] = []
             self.datapoint_name_by_path: Dict[str, str] = {}
             self.cross_ref_by_path: Dict[str, int] = {}
+            # Offen gehaltener Querverweis-Index der aktuell analysierten GPA-Datei
+            # (beschleunigt Panel-/Popup-Auflösung; wird pro Analyse neu aufgebaut).
+            self._xref_index: Optional[GpaCrossRefIndex] = None
+            # after()-Handle des Verweise-Debounce im Eigenschaften-Panel.
+            self._xref_debounce_id: Optional[str] = None
             self.visible_iids: List[str] = []
             self._edit_entry: Optional[tk.Entry] = None
             self.sort_column: Optional[str] = None
@@ -1385,6 +1391,14 @@ def run_gui() -> None:
                     datapoints: List[GpaDatapoint] = (
                         parse_gpa_datapoints(gpa, gpa_pwd) if gpa is not None else []
                     )
+                    # Querverweis-Index einmal pro Analyse aufbauen (offene ZIP +
+                    # Namensindex), damit Panel/Popup ohne erneutes ZIP-Öffnen auskommen.
+                    xref_index: Optional[GpaCrossRefIndex] = None
+                    if gpa is not None:
+                        try:
+                            xref_index = GpaCrossRefIndex(gpa, gpa_pwd)
+                        except Exception as exc:  # pragma: no cover - defensiv
+                            _log.warning("Querverweis-Index nicht aufgebaut: %s", exc)
                     ets_map: Dict[int, EtsGroupAddress] = {}
                     if ets is not None:
                         try:
@@ -1415,7 +1429,8 @@ def run_gui() -> None:
                     )
                     candidates.sort(key=lambda c: (
                         c.group_address_value, c.group_address, c.current_name.lower()))
-                    self.after(0, lambda: self._analyze_done(datapoints, ets_map, candidates))
+                    self.after(0, lambda: self._analyze_done(
+                        datapoints, ets_map, candidates, xref_index))
                 except Exception as exc:
                     self.after(0, lambda e=exc: self._analyze_error(e))
 
@@ -1427,9 +1442,14 @@ def run_gui() -> None:
 
         def _analyze_done(self, datapoints: List[GpaDatapoint],
                           ets_map: Dict[int, EtsGroupAddress],
-                          candidates: List[SyncCandidate]) -> None:
+                          candidates: List[SyncCandidate],
+                          xref_index: Optional[GpaCrossRefIndex] = None) -> None:
             _log.info("Analyse abgeschlossen: %d Datenpunkte, %d ETS-GAs, %d Kandidaten",
                       len(datapoints), len(ets_map), len(candidates))
+            # Alten Index schließen, neuen übernehmen (gültig bis zur nächsten Analyse).
+            if self._xref_index is not None:
+                self._xref_index.close()
+            self._xref_index = xref_index
             self.candidates = candidates
             self.datapoint_name_by_path = {dp.zip_path: dp.entity_name for dp in datapoints}
             self.cross_ref_by_path = {dp.zip_path: dp.cross_reference_count for dp in datapoints}
@@ -1786,7 +1806,7 @@ def run_gui() -> None:
             if not selected:
                 for var in self.detail_vars.values():
                     var.set("-")
-                self._populate_detail_xrefs(None)
+                self._schedule_detail_xrefs(None)
                 return
             c = self.candidates[int(selected[0])]
             self.detail_vars["status"].set(c.status)
@@ -1794,7 +1814,18 @@ def run_gui() -> None:
             self.detail_vars["source"].set(c.source_field)
             self.detail_vars["old"].set(c.current_name)
             self.detail_vars["new"].set(c.new_name)
-            self._populate_detail_xrefs(c)
+            self._schedule_detail_xrefs(c)
+
+        def _schedule_detail_xrefs(self, candidate: Optional[SyncCandidate]) -> None:
+            """Leichter Debounce (50 ms): beim schnellen Durchscrollen wird nur die
+            zuletzt markierte Zeile aufgelöst, nicht jede Zwischenzeile."""
+            if self._xref_debounce_id is not None:
+                try:
+                    self.after_cancel(self._xref_debounce_id)
+                except Exception:  # pragma: no cover - defensiv
+                    pass
+            self._xref_debounce_id = self.after(
+                50, lambda: self._populate_detail_xrefs(candidate))
 
         def _render_xref_entry(self, parent, row: int, view, *,
                                wraplength_main: int, wraplength_sub: int):
@@ -1862,7 +1893,8 @@ def run_gui() -> None:
             if gpa_text:
                 try:
                     views = resolve_cross_reference_views(
-                        Path(gpa_text), candidate.zip_path, self._pwd())
+                        Path(gpa_text), candidate.zip_path, self._pwd(),
+                        index=self._xref_index)
                 except Exception as exc:  # pragma: no cover - defensiv
                     _log.warning("Verweise (Panel) nicht auflösbar: %s", exc)
                     self.detail_xref_header.configure(text="Verweise")
@@ -1875,9 +1907,24 @@ def run_gui() -> None:
                 return
 
             self.detail_xref_header.configure(text=f"Verweise ({len(views)})")
-            for i, view in enumerate(views):
+            # Harte Obergrenze als Absicherung gegen den seltenen Ausnahmefall mit
+            # sehr vielen Verweisen (kein Scroll-Mechanismus). Der Normalfall (1–2)
+            # ist davon nicht betroffen; die vollständige Liste steht im Popup.
+            max_shown = 15
+            shown = views[:max_shown]
+            for i, view in enumerate(shown):
                 self._render_xref_entry(self.detail_xref_frame, i, view,
                                         wraplength_main=250, wraplength_sub=245)
+            if len(views) > max_shown:
+                extra = len(views) - max_shown
+                ctk.CTkLabel(
+                    self.detail_xref_frame,
+                    text=f"+{extra} weitere — vollständige Liste im Popup "
+                         "(Klick auf die Verweise-Zahl in der Tabelle)",
+                    font=self._fonts["small"], justify="left",
+                    text_color=("gray30", "gray70"),
+                    anchor="w", wraplength=250).grid(
+                    row=len(shown), column=0, sticky="ew", padx=6, pady=(4, 4))
 
         # ── Querverweise-Popup ─────────────────────────────────────────────────
 
@@ -1890,7 +1937,8 @@ def run_gui() -> None:
             if count and gpa_text:
                 try:
                     views = resolve_cross_reference_views(
-                        Path(gpa_text), candidate.zip_path, self._pwd())
+                        Path(gpa_text), candidate.zip_path, self._pwd(),
+                        index=self._xref_index)
                 except Exception as exc:  # pragma: no cover - defensiv
                     _log.warning("Querverweise konnten nicht aufgelöst werden: %s", exc)
                     error = str(exc)
@@ -2019,6 +2067,14 @@ def run_gui() -> None:
             if not self._ensure_password_if_needed(input_gpa):
                 self.status_var.set("Synchronisierung abgebrochen: GPA-ZIP-Passwort nicht eingegeben.")
                 return
+
+            # Offen gehaltenes Querverweis-Handle vor dem Schreiben freigeben, damit
+            # kein Datei-Lock entsteht (falls der Nutzer als Ziel dieselbe Datei wählt).
+            # Wird bei der nächsten Analyse neu aufgebaut; bis dahin lösen Klicks über
+            # frisches ZIP-Öffnen auf (korrekt, nur etwas langsamer).
+            if self._xref_index is not None:
+                self._xref_index.close()
+                self._xref_index = None
 
             pwd = self._pwd()
             ets_path_str = self.ets_var.get().strip()

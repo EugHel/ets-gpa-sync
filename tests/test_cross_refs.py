@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from gpa_ga_sync.core import (
+    GpaCrossRefIndex,
     parse_gpa_datapoints,
     resolve_cross_reference_views,
 )
@@ -272,6 +273,65 @@ class TestResolveCrossReferenceViews(unittest.TestCase):
         })
         views = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
         self.assertEqual(views, [("unbekannte Ansicht", "", "", "")])
+
+
+class TestCrossRefIndex(unittest.TestCase):
+    """GpaCrossRefIndex: gecachte Auflösung liefert identische Ergebnisse."""
+
+    def setUp(self):
+        self._paths = []
+
+    def tearDown(self):
+        for p in self._paths:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+    def _gpa(self, entries):
+        p = _write_gpa(entries)
+        self._paths.append(p)
+        return p
+
+    def _sample(self):
+        return {
+            "prj/knxdatapoints/$dp1.xml": _datapoint_xml("DP1"),
+            "prj/knxdatapoints/$dp1/datapointviews/$a1.assoc": _assoc_xml("cv1"),
+            "prj/knxdatapoints/$dp1/datapointviews/$a2.assoc": _assoc_xml("cv2"),
+            "prj/channelviews/$cv1.xml": _channelview_xml(
+                "Ansicht A", "Switch", "de.gira.schema.functions.Switch"),
+            "prj/channelviews/$cv2.xml": _channelview_xml("Ansicht B", "Dimmer"),
+        }
+
+    def test_index_matches_fresh_resolution(self):
+        gpa = self._gpa(self._sample())
+        fresh = resolve_cross_reference_views(gpa, "prj/knxdatapoints/$dp1.xml")
+        index = GpaCrossRefIndex(gpa)
+        try:
+            cached = resolve_cross_reference_views(
+                gpa, "prj/knxdatapoints/$dp1.xml", index=index)
+        finally:
+            index.close()
+        self.assertEqual(sorted(cached), sorted(fresh))
+
+    def test_index_reusable_across_multiple_calls(self):
+        gpa = self._gpa(self._sample())
+        index = GpaCrossRefIndex(gpa)
+        try:
+            first = resolve_cross_reference_views(
+                gpa, "prj/knxdatapoints/$dp1.xml", index=index)
+            second = resolve_cross_reference_views(
+                gpa, "prj/knxdatapoints/$dp1.xml", index=index)
+        finally:
+            index.close()
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 2)
+
+    def test_close_is_idempotent(self):
+        gpa = self._gpa(self._sample())
+        index = GpaCrossRefIndex(gpa)
+        index.close()
+        index.close()  # darf nicht werfen
 
 
 if __name__ == "__main__":
