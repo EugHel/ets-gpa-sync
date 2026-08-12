@@ -237,11 +237,7 @@ def run_gui() -> None:
                 "source": tk.StringVar(value="-"),
                 "old":    tk.StringVar(value="-"),
                 "new":    tk.StringVar(value="-"),
-                "xref":   tk.StringVar(value="-"),
             }
-            # Kandidat, dessen Verweise-Zahl im Eigenschaften-Panel gerade klickbar ist
-            # (None = nicht klickbar). Wird von update_details gesetzt.
-            self._detail_xref_candidate: Optional[SyncCandidate] = None
             self.kpi_vars = {
                 "gpa":       tk.StringVar(value="–"),
                 "ets":       tk.StringVar(value="–"),
@@ -1056,17 +1052,16 @@ def run_gui() -> None:
             self.detail_new_entry.bind("<KeyRelease>", self.on_detail_new_name_changed)
             self.detail_new_entry.bind("<Return>",     self.on_detail_new_name_changed)
 
-            # Verweise: gleiche Datenquelle wie die Tabellenspalte (cross_ref_by_path),
-            # als klickbares Label (öffnet dasselbe Popup wie der Tabellenklick).
-            ctk.CTkLabel(form, text="Verweise", text_color=("gray30", "gray65"),
-                         font=self._fonts["property_label"],
-                         anchor="w").grid(row=11, column=0, sticky="w", pady=(6, 1))
-            self.detail_xref_label = ctk.CTkLabel(
-                form, textvariable=self.detail_vars["xref"],
-                font=self._fonts["property_label"],
-                text_color=("#1a1a1a", "#e8e8e8"), anchor="w")
-            self.detail_xref_label.grid(row=12, column=0, sticky="ew")
-            self.detail_xref_label.bind("<Button-1>", self._on_detail_xref_click)
+            # Verweise: volle Liste inline (gleiche Auflösung/Optik wie das Popup).
+            # Header zeigt die Anzahl; die Einträge werden bei jedem Zeilenwechsel
+            # in self.detail_xref_frame neu aufgebaut (_populate_detail_xrefs).
+            self.detail_xref_header = ctk.CTkLabel(
+                form, text="Verweise", text_color=("gray30", "gray65"),
+                font=self._fonts["property_label"], anchor="w")
+            self.detail_xref_header.grid(row=11, column=0, sticky="w", pady=(6, 1))
+            self.detail_xref_frame = ctk.CTkFrame(form, fg_color="transparent")
+            self.detail_xref_frame.grid(row=12, column=0, sticky="ew")
+            self.detail_xref_frame.columnconfigure(0, weight=1)
 
             p = self._p
             self._info_frame = tk.Frame(form, bg=p["info_bg"],
@@ -1791,7 +1786,7 @@ def run_gui() -> None:
             if not selected:
                 for var in self.detail_vars.values():
                     var.set("-")
-                self._set_detail_xref(None)
+                self._populate_detail_xrefs(None)
                 return
             c = self.candidates[int(selected[0])]
             self.detail_vars["status"].set(c.status)
@@ -1799,35 +1794,90 @@ def run_gui() -> None:
             self.detail_vars["source"].set(c.source_field)
             self.detail_vars["old"].set(c.current_name)
             self.detail_vars["new"].set(c.new_name)
-            self._set_detail_xref(c)
+            self._populate_detail_xrefs(c)
 
-        def _set_detail_xref(self, candidate: Optional[SyncCandidate]) -> None:
-            """Befüllt das Verweise-Feld im Panel aus derselben Quelle wie die Tabelle.
+        def _render_xref_entry(self, parent, row: int, view, *,
+                               wraplength_main: int, wraplength_sub: int):
+            """Rendert einen Verweis-Eintrag (Breadcrumb + Kanaltyp) in parent.
 
-            "-" wenn nicht anwendbar (kein Datenpunkt/zip_path), "0" ohne Interaktion,
-            sonst "N ↗" mit hand2-Cursor und Popup-Klick (wie in der Tabellenspalte).
+            Gemeinsam genutzt von Popup und Eigenschaften-Panel, damit Optik und
+            Format identisch bleiben (keine doppelte Logik). view ist das 4-Tupel
+            (EntityName, ChannelTypeId, FunctionType, LocationPath) aus
+            resolve_cross_reference_views.
             """
-            if candidate is None or not candidate.zip_path:
-                self._detail_xref_candidate = None
-                self.detail_vars["xref"].set("-")
-                if hasattr(self, "detail_xref_label"):
-                    self.detail_xref_label.configure(cursor="")
-                return
-            count = self.cross_ref_by_path.get(candidate.zip_path, 0)
-            if count > 0:
-                self._detail_xref_candidate = candidate
-                self.detail_vars["xref"].set(self._as_link_text(str(count)))
-                self.detail_xref_label.configure(cursor="hand2")
-            else:
-                self._detail_xref_candidate = None
-                self.detail_vars["xref"].set("0")
-                self.detail_xref_label.configure(cursor="")
+            entity, channel_type, function_type, location = view
+            # Zeile 1: Breadcrumb, der mit der Kachel (Channelview) endet. Das
+            # "(Raum)"/"(Etage)"-Suffix am letzten Location-Segment wird entfernt;
+            # ohne auflösbaren Standort nur der Channelview-Name.
+            loc_path = re.sub(r"\s*\([^()]*\)\s*$", "", location).strip() if location else ""
+            breadcrumb = f"{loc_path} → {entity}" if loc_path else entity
+            entry = ctk.CTkFrame(parent, fg_color="transparent")
+            entry.grid(row=row, column=0, sticky="ew", padx=6, pady=(2, 6))
+            entry.columnconfigure(0, weight=1)
+            ctk.CTkLabel(entry, text=f"•  {breadcrumb}",
+                         font=self._fonts["body"], justify="left",
+                         anchor="w", wraplength=wraplength_main).grid(
+                row=0, column=0, sticky="ew")
+            # Zeile 2: Kanaltyp als gedämpfte Nebeninfo. Deutscher Name aus dem
+            # (Function.Type, ChannelType)-Lookup: "<Name> (<ChannelTypeId>)".
+            # Ohne sicheren Treffer Fallback auf die reine technische ID.
+            if channel_type:
+                german = channel_type_display_name(function_type, channel_type)
+                type_text = f"{german} ({channel_type})" if german else channel_type
+                ctk.CTkLabel(entry, text=f"      {type_text}",
+                             font=self._fonts["small"], justify="left",
+                             text_color=("gray30", "gray70"),
+                             anchor="w", wraplength=wraplength_sub).grid(
+                    row=1, column=0, sticky="ew")
+            return entry
 
-        def _on_detail_xref_click(self, _event=None) -> None:
-            """Öffnet dasselbe Verweise-Popup wie der Tabellenklick (keine Doppel-Logik)."""
-            candidate = self._detail_xref_candidate
-            if candidate is not None:
-                self._open_xref_popup(candidate)
+        def _populate_detail_xrefs(self, candidate: Optional[SyncCandidate]) -> None:
+            """Baut die Verweise-Liste im Eigenschaften-Panel bei jedem Zeilenwechsel neu auf.
+
+            Nutzt dieselbe Auflösung wie das Popup (resolve_cross_reference_views).
+            - kein Datenpunkt/zip_path: "-"
+            - 0 Verweise (oder nicht auflösbar): "Keine Verwendung gefunden"
+            - sonst: volle Liste im gleichen Format wie das Popup.
+            Das Popup (Tabellenklick) bleibt davon unberührt.
+            """
+            if not hasattr(self, "detail_xref_frame"):
+                return
+            for child in self.detail_xref_frame.winfo_children():
+                child.destroy()
+
+            def _muted(text: str) -> None:
+                ctk.CTkLabel(self.detail_xref_frame, text=text,
+                             font=self._fonts["small"], justify="left",
+                             text_color=("gray30", "gray70"),
+                             anchor="w", wraplength=250).grid(
+                    row=0, column=0, sticky="ew", padx=6, pady=(2, 4))
+
+            if candidate is None or not candidate.zip_path:
+                self.detail_xref_header.configure(text="Verweise")
+                _muted("-")
+                return
+
+            gpa_text = self.gpa_var.get().strip()
+            views: List = []
+            if gpa_text:
+                try:
+                    views = resolve_cross_reference_views(
+                        Path(gpa_text), candidate.zip_path, self._pwd())
+                except Exception as exc:  # pragma: no cover - defensiv
+                    _log.warning("Verweise (Panel) nicht auflösbar: %s", exc)
+                    self.detail_xref_header.configure(text="Verweise")
+                    _muted("Auflösung fehlgeschlagen")
+                    return
+
+            if not views:
+                self.detail_xref_header.configure(text="Verweise")
+                _muted("Keine Verwendung gefunden")
+                return
+
+            self.detail_xref_header.configure(text=f"Verweise ({len(views)})")
+            for i, view in enumerate(views):
+                self._render_xref_entry(self.detail_xref_frame, i, view,
+                                        wraplength_main=250, wraplength_sub=245)
 
         # ── Querverweise-Popup ─────────────────────────────────────────────────
 
@@ -1881,33 +1931,9 @@ def run_gui() -> None:
                              wraplength=400).grid(
                     row=0, column=0, sticky="w", padx=6, pady=6)
             else:
-                for i, (entity, channel_type, function_type, location) in enumerate(views):
-                    # Zeile 1: durchgehender Breadcrumb-Pfad, der mit der Kachel
-                    # (Channelview) als letztem Schritt endet. Das "(Raum)"/"(Etage)"-
-                    # Suffix am letzten Location-Segment wird entfernt, damit der
-                    # Übergang zur Kachel sauber lesbar bleibt. Ohne auflösbaren
-                    # Standort zeigt Zeile 1 nur den Channelview-Namen.
-                    loc_path = re.sub(r"\s*\([^()]*\)\s*$", "", location).strip() if location else ""
-                    breadcrumb = f"{loc_path} → {entity}" if loc_path else entity
-                    entry = ctk.CTkFrame(body, fg_color="transparent")
-                    entry.grid(row=i, column=0, sticky="ew", padx=6, pady=(2, 6))
-                    entry.columnconfigure(0, weight=1)
-                    ctk.CTkLabel(entry, text=f"•  {breadcrumb}",
-                                 font=self._fonts["body"], justify="left",
-                                 anchor="w", wraplength=400).grid(
-                        row=0, column=0, sticky="ew")
-                    # Zeile 2: Kanaltyp als gedämpfte Nebeninfo. Der deutsche Name
-                    # kommt aus dem (Function.Type, ChannelType)-Lookup: "<Name>
-                    # (<ChannelTypeId>)". Ohne sicheren Treffer Fallback auf die
-                    # reine technische ID (kein "Unbekannt", kein Absturz).
-                    if channel_type:
-                        german = channel_type_display_name(function_type, channel_type)
-                        type_text = f"{german} ({channel_type})" if german else channel_type
-                        ctk.CTkLabel(entry, text=f"      {type_text}",
-                                     font=self._fonts["small"], justify="left",
-                                     text_color=("gray30", "gray70"),
-                                     anchor="w", wraplength=390).grid(
-                            row=1, column=0, sticky="ew")
+                for i, view in enumerate(views):
+                    self._render_xref_entry(body, i, view,
+                                            wraplength_main=400, wraplength_sub=390)
 
             ok_btn = ctk.CTkButton(dialog, text="Schließen", fg_color=ACCENT,
                                    hover_color=ACCENT_DARK, text_color="white",
