@@ -145,6 +145,18 @@ def build_partial_candidates(
     rows: List[SyncCandidate] = []
 
     if datapoints and not ets_map:
+        # Adress-Konflikt im GPA-only-Modus (ohne ETS): ZWEI VERSCHIEDENE
+        # knxdatapoints-Entitäten (je eine eigene $uid.xml, hier je ein eigenes dp)
+        # tragen dieselbe write_group_address. Das ist meist ein GPA-Fehler und wird
+        # als Adress-Konflikt markiert statt als normale "Nur GPA"-Zeile.
+        # NICHT betroffen: ein einzelner Datenpunkt, der von einer Channelview mehrfach
+        # über datapointviews/ referenziert wird (Feature "Verweise", cross_reference_count) –
+        # das erzeugt keine zweite Entität und damit keinen zweiten Counter-Treffer.
+        write_counts = Counter(
+            dp.write_group_address for dp in datapoints if dp.write_group_address
+        )
+        conflicting_writes = {value for value, count in write_counts.items() if count > 1}
+
         for dp in datapoints:
             values = dp.candidate_group_addresses
             value = values[0] if values else 0
@@ -160,6 +172,24 @@ def build_partial_candidates(
                 source = "ListenerGroupAddresses"
             else:
                 source = ""
+            if dp.write_group_address in conflicting_writes:
+                try:
+                    conflict_ga = int_to_ga(dp.write_group_address)
+                except ValueError:
+                    conflict_ga = ga_text
+                rows.append(
+                    SyncCandidate(
+                        selected=False,
+                        status=SyncStatus.ADRESSKONFLIKT,
+                        zip_path=dp.zip_path,
+                        current_name=dp.entity_name,
+                        new_name="",
+                        group_address=conflict_ga,
+                        group_address_value=dp.write_group_address,
+                        source_field="WriteGroupAddress",
+                    )
+                )
+                continue
             rows.append(
                 SyncCandidate(
                     selected=False,

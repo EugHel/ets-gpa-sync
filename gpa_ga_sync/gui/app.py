@@ -5,6 +5,7 @@ import io
 import json
 import os
 import queue
+import re
 import threading
 import webbrowser
 import zipfile
@@ -1548,8 +1549,15 @@ def run_gui() -> None:
 
         @staticmethod
         def _as_link_text(text: str) -> str:
-            """Unterstreicht Text zeichenweise via U+0332 (Link-Optik in der Zelle)."""
-            return "".join(ch + "̲" for ch in text)
+            """Kennzeichnet eine klickbare Verweise-Zahl mit ' ↗' (Link-Optik in der Zelle).
+
+            Bewusst ein rendering-unabhängiges Symbol-Suffix statt eines Unicode-
+            Unterstrichs (U+0332): letzterer wurde von der Treeview-Zeilenhöhe
+            abgeschnitten. ttk.Treeview erlaubt keine zellgenaue Schrift/Farbe,
+            daher signalisiert das Suffix – kombiniert mit dem hand2-Cursor – die
+            Klickbarkeit.
+            """
+            return f"{text} ↗"
 
         def _is_xref_link_row(self, row: str) -> bool:
             """True, wenn die Verweise-Zelle dieser Zeile klickbar ist (Datenpunkt vorhanden)."""
@@ -1828,16 +1836,23 @@ def run_gui() -> None:
                     row=0, column=0, sticky="w", padx=6, pady=6)
             else:
                 for i, (entity, channel_type, location) in enumerate(views):
-                    label = entity if not channel_type else f"{entity}   ·   {channel_type}"
+                    # Zeile 1: durchgehender Breadcrumb-Pfad, der mit der Kachel
+                    # (Channelview) als letztem Schritt endet. Das "(Raum)"/"(Etage)"-
+                    # Suffix am letzten Location-Segment wird entfernt, damit der
+                    # Übergang zur Kachel sauber lesbar bleibt. Ohne auflösbaren
+                    # Standort zeigt Zeile 1 nur den Channelview-Namen.
+                    loc_path = re.sub(r"\s*\([^()]*\)\s*$", "", location).strip() if location else ""
+                    breadcrumb = f"{loc_path} → {entity}" if loc_path else entity
                     entry = ctk.CTkFrame(body, fg_color="transparent")
-                    entry.grid(row=i, column=0, sticky="ew", padx=6, pady=(2, 4))
+                    entry.grid(row=i, column=0, sticky="ew", padx=6, pady=(2, 6))
                     entry.columnconfigure(0, weight=1)
-                    ctk.CTkLabel(entry, text=f"•  {label}",
+                    ctk.CTkLabel(entry, text=f"•  {breadcrumb}",
                                  font=self._fonts["body"], justify="left",
                                  anchor="w", wraplength=400).grid(
                         row=0, column=0, sticky="ew")
-                    if location:
-                        ctk.CTkLabel(entry, text=f"      📍  {location}",
+                    # Zeile 2: technischer Kanaltyp als gedämpfte Nebeninfo.
+                    if channel_type:
+                        ctk.CTkLabel(entry, text=f"      {channel_type}",
                                      font=self._fonts["small"], justify="left",
                                      text_color=("gray30", "gray70"),
                                      anchor="w", wraplength=390).grid(

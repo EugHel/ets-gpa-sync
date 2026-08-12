@@ -444,5 +444,69 @@ class TestBuildSyncCandidates(unittest.TestCase):
         self.assertTrue(all(r.status == "Änderung" for r in results))
 
 
+class TestBuildPartialCandidatesConflicts(unittest.TestCase):
+    """GPA-only-Modus (ohne ETS): Write-Adress-Dubletten → Adress-Konflikt."""
+
+    def test_two_entities_same_write_address_are_conflict(self):
+        # Zwei VERSCHIEDENE knxdatapoints-Entitäten (zwei eigene $uid.xml) tragen
+        # dieselbe Write-GA → beide Adress-Konflikt, kein "(2)"-Namenszusatz.
+        val = tool.ga_to_int("2/4/161")
+        rows = tool.build_partial_candidates(
+            [
+                _dp("a.xml", "R. Flur OG Gaube r. - Stopp", write_ga=val),
+                _dp("b.xml", "Andere Kachel - Stopp", write_ga=val),
+            ],
+            {},
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({r.status for r in rows}, {tool.SyncStatus.ADRESSKONFLIKT})
+        self.assertTrue(all(not r.status == tool.SyncStatus.NUR_GPA for r in rows))
+        self.assertTrue(all(not r.selected for r in rows))
+        self.assertTrue(all("(2)" not in r.new_name for r in rows))
+        self.assertTrue(all(r.group_address == "2/4/161" for r in rows))
+
+    def test_single_entity_multiple_datapointviews_is_not_conflict(self):
+        # Regression: EINE Entität mit mehreren datapointviews-Referenzen
+        # (Feature "Verweise", z.B. GA 2/4/161 mit Verweise=2) bleibt eine
+        # normale "Nur GPA"-Zeile und wird NICHT als Adress-Konflikt markiert.
+        val = tool.ga_to_int("2/4/161")
+        dp = tool.GpaDatapoint(
+            zip_path="af5d4cde.xml",
+            entity_name="R. Flur OG Gaube r. - Stopp",
+            write_group_address=val,
+            read_group_address=val,
+            listener_group_addresses=(),
+            cross_reference_count=2,
+        )
+        rows = tool.build_partial_candidates([dp], {})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].status, tool.SyncStatus.NUR_GPA)
+        # Verweise-Count bleibt am Datenpunkt erhalten und löst keinen Konflikt aus.
+        self.assertEqual(dp.cross_reference_count, 2)
+
+    def test_distinct_write_addresses_stay_nur_gpa(self):
+        rows = tool.build_partial_candidates(
+            [
+                _dp("a.xml", "Alt A", write_ga=tool.ga_to_int("0/0/1")),
+                _dp("b.xml", "Alt B", write_ga=tool.ga_to_int("0/0/2")),
+            ],
+            {},
+        )
+        self.assertEqual({r.status for r in rows}, {tool.SyncStatus.NUR_GPA})
+
+    def test_three_entities_same_write_all_conflict(self):
+        val = tool.ga_to_int("1/1/1")
+        rows = tool.build_partial_candidates(
+            [
+                _dp("a.xml", "A", write_ga=val),
+                _dp("b.xml", "B", write_ga=val),
+                _dp("c.xml", "C", write_ga=val),
+            ],
+            {},
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual({r.status for r in rows}, {tool.SyncStatus.ADRESSKONFLIKT})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
