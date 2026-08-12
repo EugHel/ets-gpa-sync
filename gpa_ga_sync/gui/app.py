@@ -72,8 +72,6 @@ _PALETTE: Dict[str, Dict[str, str]] = {
         "ambiguous_fg": "#a78bfa",
         "conflict_fg":  "#f87171",
         "progress_bg":  "#3d3d3d",
-        "no_xref_bg":   "#4a4526",
-        "no_xref_fg":   "#f0e6b0",
     },
     "light": {
         "bg":           "#f6f8fb",
@@ -95,8 +93,6 @@ _PALETTE: Dict[str, Dict[str, str]] = {
         "ambiguous_fg": "#7c3aed",
         "conflict_fg":  "#dc2626",
         "progress_bg":  "#e0e0e0",
-        "no_xref_bg":   "#fff3c4",
-        "no_xref_fg":   "#7a5c00",
     },
 }
 
@@ -336,8 +332,6 @@ def run_gui() -> None:
                 self.tree.tag_configure("unselected_sync", foreground=p["muted"])
                 self.tree.tag_configure("ambiguous",     foreground=p["ambiguous_fg"])
                 self.tree.tag_configure("conflict",      foreground=p["conflict_fg"])
-                self.tree.tag_configure("no_xref",       background=p["no_xref_bg"],
-                                        foreground=p["no_xref_fg"])
 
         def _refresh_legacy_widgets(self) -> None:
             """Aktualisiert tk/ttk-Widgets (kein Auto-Recolor bei CTK-Theme-Wechsel)."""
@@ -1057,7 +1051,7 @@ def run_gui() -> None:
             # Header zeigt die Anzahl; die Einträge werden bei jedem Zeilenwechsel
             # in self.detail_xref_frame neu aufgebaut (_populate_detail_xrefs).
             self.detail_xref_header = ctk.CTkLabel(
-                form, text="Verweise", text_color=("gray30", "gray65"),
+                form, text="GPA-Verweise", text_color=("gray30", "gray65"),
                 font=self._fonts["property_label"], anchor="w")
             self.detail_xref_header.grid(row=11, column=0, sticky="w", pady=(6, 1))
             self.detail_xref_frame = ctk.CTkFrame(form, fg_color="transparent")
@@ -1501,11 +1495,11 @@ def run_gui() -> None:
                 # Verweise: nur für Zeilen mit echtem Datenpunkt (zip_path) anwendbar.
                 if c.zip_path:
                     xref = self.cross_ref_by_path.get(c.zip_path, 0)
-                    # Unterstrichen darstellen (Link-Optik), da ttk.Treeview keine
-                    # zellgenaue Schrift/Farbe erlaubt – kombiniert mit hand2-Cursor.
+                    # "N ↗" als Link-Optik (ttk.Treeview erlaubt keine zellgenaue
+                    # Schrift/Farbe) – kombiniert mit hand2-Cursor. 0-Verweise werden
+                    # bewusst NICHT mehr farblich hervorgehoben (kein "no_xref"-Tag),
+                    # damit Projekte mit vielen unbenutzten Datenpunkten ruhig bleiben.
                     xref_text = self._as_link_text(str(xref))
-                    if xref == 0:
-                        tags.append("no_xref")
                 else:
                     xref_text = ""
                 self.tree.insert("", "end", iid=iid, text=mark,
@@ -1877,7 +1871,7 @@ def run_gui() -> None:
                     row=0, column=0, sticky="ew", padx=6, pady=(2, 4))
 
             if candidate is None or not candidate.zip_path:
-                self.detail_xref_header.configure(text="Verweise")
+                self.detail_xref_header.configure(text="GPA-Verweise")
                 _muted("-")
                 return
 
@@ -1890,16 +1884,16 @@ def run_gui() -> None:
                         index=self._xref_index)
                 except Exception as exc:  # pragma: no cover - defensiv
                     _log.warning("Verweise (Panel) nicht auflösbar: %s", exc)
-                    self.detail_xref_header.configure(text="Verweise")
+                    self.detail_xref_header.configure(text="GPA-Verweise")
                     _muted("Auflösung fehlgeschlagen")
                     return
 
             if not views:
-                self.detail_xref_header.configure(text="Verweise")
+                self.detail_xref_header.configure(text="GPA-Verweise")
                 _muted("Keine Verwendung gefunden")
                 return
 
-            self.detail_xref_header.configure(text=f"Verweise ({len(views)})")
+            self.detail_xref_header.configure(text=f"GPA-Verweise ({len(views)})")
             # Harte Obergrenze als Absicherung gegen den seltenen Ausnahmefall mit
             # sehr vielen Verweisen (kein Scroll-Mechanismus). Der Normalfall (1–2)
             # ist davon nicht betroffen; die vollständige Liste steht im Popup.
