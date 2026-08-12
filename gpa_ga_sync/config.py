@@ -55,8 +55,9 @@ FONT_SIZE_PROPERTY_LABEL = 14   # Eigenschaften-Feld-Labels (Status, GA, ...)
 # solche Zuordnung (nur englische FullName-Felder) – die deutschen Namen
 # stammen aus dem GPA-Client-Produktkatalog. Daher hier fest gepflegt.
 #
-# UNVOLLSTÄNDIG: enthält nur die in Test.gpa tatsächlich vorkommenden
-# 12 Typen. Bei Bedarf erweitern, wenn in echten Projekten weitere
+# Deckt aktuell die 14 ChannelTypeIds ab, die in den echten Projektdateien
+# (drei Kundenprojekte) tatsächlich vorkommen. Weiterhin potenziell
+# UNVOLLSTÄNDIG: bei Bedarf erweitern, wenn in weiteren Projekten neue
 # ChannelTypeIds auftauchen (Fallback ist die technische ID – kein Absturz).
 CHANNEL_TYPE_NAMES = {
     "de.gira.schema.channels.Switch": "Schalten",
@@ -71,4 +72,6 @@ CHANNEL_TYPE_NAMES = {
     "de.gira.schema.channels.String": "Textstatus",
     "de.gira.schema.channels.Temperature": "Temperaturwert",
     "de.gira.schema.channels.Trigger": "Tastenfunktion",
+    "de.gira.schema.channels.FunctionScene": "Szene",
+    "de.gira.schema.channels.Link": "IP-Link",
 }
