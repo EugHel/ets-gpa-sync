@@ -237,7 +237,11 @@ def run_gui() -> None:
                 "source": tk.StringVar(value="-"),
                 "old":    tk.StringVar(value="-"),
                 "new":    tk.StringVar(value="-"),
+                "xref":   tk.StringVar(value="-"),
             }
+            # Kandidat, dessen Verweise-Zahl im Eigenschaften-Panel gerade klickbar ist
+            # (None = nicht klickbar). Wird von update_details gesetzt.
+            self._detail_xref_candidate: Optional[SyncCandidate] = None
             self.kpi_vars = {
                 "gpa":       tk.StringVar(value="–"),
                 "ets":       tk.StringVar(value="–"),
@@ -1052,11 +1056,23 @@ def run_gui() -> None:
             self.detail_new_entry.bind("<KeyRelease>", self.on_detail_new_name_changed)
             self.detail_new_entry.bind("<Return>",     self.on_detail_new_name_changed)
 
+            # Verweise: gleiche Datenquelle wie die Tabellenspalte (cross_ref_by_path),
+            # als klickbares Label (öffnet dasselbe Popup wie der Tabellenklick).
+            ctk.CTkLabel(form, text="Verweise", text_color=("gray30", "gray65"),
+                         font=self._fonts["property_label"],
+                         anchor="w").grid(row=11, column=0, sticky="w", pady=(6, 1))
+            self.detail_xref_label = ctk.CTkLabel(
+                form, textvariable=self.detail_vars["xref"],
+                font=self._fonts["property_label"],
+                text_color=("#1a1a1a", "#e8e8e8"), anchor="w")
+            self.detail_xref_label.grid(row=12, column=0, sticky="ew")
+            self.detail_xref_label.bind("<Button-1>", self._on_detail_xref_click)
+
             p = self._p
             self._info_frame = tk.Frame(form, bg=p["info_bg"],
                                         highlightbackground=p["info_border"],
                                         highlightthickness=1)
-            self._info_frame.grid(row=11, column=0, sticky="ew", pady=(16, 10))
+            self._info_frame.grid(row=13, column=0, sticky="ew", pady=(16, 10))
             self._info_label = tk.Label(
                 self._info_frame,
                 text='ⓘ  Der neue Name kann hier beliebig angepasst werden, bevor die Synchronisation durchgeführt wird.',
@@ -1775,6 +1791,7 @@ def run_gui() -> None:
             if not selected:
                 for var in self.detail_vars.values():
                     var.set("-")
+                self._set_detail_xref(None)
                 return
             c = self.candidates[int(selected[0])]
             self.detail_vars["status"].set(c.status)
@@ -1782,6 +1799,35 @@ def run_gui() -> None:
             self.detail_vars["source"].set(c.source_field)
             self.detail_vars["old"].set(c.current_name)
             self.detail_vars["new"].set(c.new_name)
+            self._set_detail_xref(c)
+
+        def _set_detail_xref(self, candidate: Optional[SyncCandidate]) -> None:
+            """Befüllt das Verweise-Feld im Panel aus derselben Quelle wie die Tabelle.
+
+            "-" wenn nicht anwendbar (kein Datenpunkt/zip_path), "0" ohne Interaktion,
+            sonst "N ↗" mit hand2-Cursor und Popup-Klick (wie in der Tabellenspalte).
+            """
+            if candidate is None or not candidate.zip_path:
+                self._detail_xref_candidate = None
+                self.detail_vars["xref"].set("-")
+                if hasattr(self, "detail_xref_label"):
+                    self.detail_xref_label.configure(cursor="")
+                return
+            count = self.cross_ref_by_path.get(candidate.zip_path, 0)
+            if count > 0:
+                self._detail_xref_candidate = candidate
+                self.detail_vars["xref"].set(self._as_link_text(str(count)))
+                self.detail_xref_label.configure(cursor="hand2")
+            else:
+                self._detail_xref_candidate = None
+                self.detail_vars["xref"].set("0")
+                self.detail_xref_label.configure(cursor="")
+
+        def _on_detail_xref_click(self, _event=None) -> None:
+            """Öffnet dasselbe Verweise-Popup wie der Tabellenklick (keine Doppel-Logik)."""
+            candidate = self._detail_xref_candidate
+            if candidate is not None:
+                self._open_xref_popup(candidate)
 
         # ── Querverweise-Popup ─────────────────────────────────────────────────
 
