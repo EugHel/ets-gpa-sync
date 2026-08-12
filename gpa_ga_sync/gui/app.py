@@ -38,7 +38,7 @@ from ..licensing import (
 )
 from ..log import get_logger
 from .fonts import (get_fonts, TTK_BODY, TTK_BODY_BOLD, TTK_SMALL,
-                    TTK_TABLE_HEADER, TTK_TABLE_BODY, TTK_INFOBOX)
+                    TTK_TABLE_HEADER, TTK_TABLE_BODY)
 
 _log = get_logger("gui.app")
 
@@ -354,11 +354,6 @@ def run_gui() -> None:
                 self.tree_menu.configure(bg=p["panel"], fg=p["text"],
                                          activebackground=p["soft_green"],
                                          activeforeground=p["text"])
-            if hasattr(self, "_info_frame"):
-                self._info_frame.configure(bg=p["info_bg"],
-                                           highlightbackground=p["info_border"])
-            if hasattr(self, "_info_label"):
-                self._info_label.configure(bg=p["info_bg"], fg=p["info_fg"])
             if hasattr(self, "_logo_canvas") and self._logo_canvas is not None:
                 self._logo_canvas.configure(bg=p["toolbar_bg"])
             if hasattr(self, "_kpi_canvases"):
@@ -1053,7 +1048,7 @@ def run_gui() -> None:
             add_field("Gruppenadresse",        "ga",     row=3)
             add_field("Quelle",                "source", row=5)
             add_field("Aktueller GPA-Name",      "old",    row=7)
-            self.detail_new_entry = add_field("Neuer GPA-Name aus ETS", "new",
+            self.detail_new_entry = add_field("Neuer GPA-Name aus ETS (editierbar)", "new",
                                               readonly=False, row=9)
             self.detail_new_entry.bind("<KeyRelease>", self.on_detail_new_name_changed)
             self.detail_new_entry.bind("<Return>",     self.on_detail_new_name_changed)
@@ -1068,18 +1063,6 @@ def run_gui() -> None:
             self.detail_xref_frame = ctk.CTkFrame(form, fg_color="transparent")
             self.detail_xref_frame.grid(row=12, column=0, sticky="ew")
             self.detail_xref_frame.columnconfigure(0, weight=1)
-
-            p = self._p
-            self._info_frame = tk.Frame(form, bg=p["info_bg"],
-                                        highlightbackground=p["info_border"],
-                                        highlightthickness=1)
-            self._info_frame.grid(row=13, column=0, sticky="ew", pady=(16, 10))
-            self._info_label = tk.Label(
-                self._info_frame,
-                text='ⓘ  Der neue Name kann hier beliebig angepasst werden, bevor die Synchronisation durchgeführt wird.',
-                bg=p["info_bg"], fg=p["info_fg"],
-                font=TTK_INFOBOX, anchor="w", justify="left", wraplength=260)
-            self._info_label.pack(fill="x", padx=10, pady=10)
 
         def _build_footer(self) -> None:
             p = self._p
@@ -1828,13 +1811,20 @@ def run_gui() -> None:
                 50, lambda: self._populate_detail_xrefs(candidate))
 
         def _render_xref_entry(self, parent, row: int, view, *,
-                               wraplength_main: int, wraplength_sub: int):
+                               wraplength_main: int, wraplength_sub: int,
+                               sub_font_key: str = "small",
+                               show_channel_id: bool = True):
             """Rendert einen Verweis-Eintrag (Breadcrumb + Kanaltyp) in parent.
 
             Gemeinsam genutzt von Popup und Eigenschaften-Panel, damit Optik und
-            Format identisch bleiben (keine doppelte Logik). view ist das 4-Tupel
-            (EntityName, ChannelTypeId, FunctionType, LocationPath) aus
+            Format weitgehend identisch bleiben (keine doppelte Logik). view ist das
+            4-Tupel (EntityName, ChannelTypeId, FunctionType, LocationPath) aus
             resolve_cross_reference_views.
+
+            sub_font_key/show_channel_id steuern die Zeile-2-Darstellung:
+            - Popup: kleine Schrift, mit technischer ID "(<ChannelTypeId>)".
+            - Panel: eine Stufe größere Schrift, ohne technische ID (nur wenn kein
+              übersetzter Name existiert, bleibt die ID als Fallback sichtbar).
             """
             entity, channel_type, function_type, location = view
             # Zeile 1: Breadcrumb, der mit der Kachel (Channelview) endet. Das
@@ -1850,13 +1840,16 @@ def run_gui() -> None:
                          anchor="w", wraplength=wraplength_main).grid(
                 row=0, column=0, sticky="ew")
             # Zeile 2: Kanaltyp als gedämpfte Nebeninfo. Deutscher Name aus dem
-            # (Function.Type, ChannelType)-Lookup: "<Name> (<ChannelTypeId>)".
-            # Ohne sicheren Treffer Fallback auf die reine technische ID.
+            # (Function.Type, ChannelType)-Lookup. Ohne Treffer Fallback auf die
+            # technische ID, damit die Zeile nie leer bleibt.
             if channel_type:
                 german = channel_type_display_name(function_type, channel_type)
-                type_text = f"{german} ({channel_type})" if german else channel_type
+                if german:
+                    type_text = f"{german} ({channel_type})" if show_channel_id else german
+                else:
+                    type_text = channel_type
                 ctk.CTkLabel(entry, text=f"      {type_text}",
-                             font=self._fonts["small"], justify="left",
+                             font=self._fonts[sub_font_key], justify="left",
                              text_color=("gray30", "gray70"),
                              anchor="w", wraplength=wraplength_sub).grid(
                     row=1, column=0, sticky="ew")
@@ -1914,7 +1907,9 @@ def run_gui() -> None:
             shown = views[:max_shown]
             for i, view in enumerate(shown):
                 self._render_xref_entry(self.detail_xref_frame, i, view,
-                                        wraplength_main=250, wraplength_sub=245)
+                                        wraplength_main=250, wraplength_sub=245,
+                                        sub_font_key="table_body",
+                                        show_channel_id=False)
             if len(views) > max_shown:
                 extra = len(views) - max_shown
                 ctk.CTkLabel(
