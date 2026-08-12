@@ -46,3 +46,29 @@ FONT_SIZE_TABLE_HEADER   = 11   # Tabellen-Spaltenköpfe (Sync, Status, GA, ...)
 FONT_SIZE_TABLE_BODY     = 11   # Tabellen-Datenzeilen
 FONT_SIZE_INFOBOX        = 10   # Info-Box rechts ("Der neue Name kann ...")
 FONT_SIZE_PROPERTY_LABEL = 14   # Eigenschaften-Feld-Labels (Status, GA, ...)
+
+# ═══════════════════════════════════════════════════════════
+# CHANNEL-TYPE-ANZEIGENAMEN (Verweise-Popup)
+# ═══════════════════════════════════════════════════════════
+# Übersetzung der technischen ChannelTypeId-URNs in die deutschen
+# Anzeigenamen der GPA-UI. Die GPA-Projektdatei selbst enthält KEINE
+# solche Zuordnung (nur englische FullName-Felder) – die deutschen Namen
+# stammen aus dem GPA-Client-Produktkatalog. Daher hier fest gepflegt.
+#
+# UNVOLLSTÄNDIG: enthält nur die in Test.gpa tatsächlich vorkommenden
+# 12 Typen. Bei Bedarf erweitern, wenn in echten Projekten weitere
+# ChannelTypeIds auftauchen (Fallback ist die technische ID – kein Absturz).
+CHANNEL_TYPE_NAMES = {
+    "de.gira.schema.channels.Switch": "Schalten",
+    "de.gira.schema.channels.KNX.Dimmer": "Dimmen",
+    "de.gira.schema.channels.BlindWithPos": "Rollladen / Jalousie",
+    "de.gira.schema.channels.KNX.HeatingCoolingSwitchable": "Heizen/Kühlen",
+    "de.gira.schema.channels.Binary": "Binärstatus",
+    "de.gira.schema.channels.Float": "Dezimalwert",
+    "de.gira.schema.channels.Byte": "Wertgeber 8 Bit",
+    "de.gira.schema.channels.DWord": "Wertgeber",
+    "de.gira.schema.channels.Percent": "Prozentwert",
+    "de.gira.schema.channels.String": "Textstatus",
+    "de.gira.schema.channels.Temperature": "Temperaturwert",
+    "de.gira.schema.channels.Trigger": "Tastenfunktion",
+}

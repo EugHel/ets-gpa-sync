@@ -30,7 +30,7 @@ from ..core import (
     resolve_cross_reference_views,
     write_updated_gpa,
 )
-from ..config import LICENSING_ENABLED, APP_VERSION
+from ..config import LICENSING_ENABLED, APP_VERSION, CHANNEL_TYPE_NAMES
 from ..licensing import (
     LicenseManager, LicenseStatus, LicenseStorage, TrialManager,
     NullProvider, get_machine_id,
@@ -1896,9 +1896,13 @@ def run_gui() -> None:
                                  font=self._fonts["body"], justify="left",
                                  anchor="w", wraplength=400).grid(
                         row=0, column=0, sticky="ew")
-                    # Zeile 2: technischer Kanaltyp als gedämpfte Nebeninfo.
+                    # Zeile 2: Kanaltyp als gedämpfte Nebeninfo. Wenn der deutsche
+                    # Anzeigename bekannt ist: "<Name> (<ChannelTypeId>)", sonst
+                    # Fallback auf die reine technische ID (kein "Unbekannt", kein Absturz).
                     if channel_type:
-                        ctk.CTkLabel(entry, text=f"      {channel_type}",
+                        german = CHANNEL_TYPE_NAMES.get(channel_type)
+                        type_text = f"{german} ({channel_type})" if german else channel_type
+                        ctk.CTkLabel(entry, text=f"      {type_text}",
                                      font=self._fonts["small"], justify="left",
                                      text_color=("gray30", "gray70"),
                                      anchor="w", wraplength=390).grid(
