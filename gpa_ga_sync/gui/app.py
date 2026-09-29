@@ -1009,8 +1009,10 @@ def run_gui() -> None:
             self.tree.column("#0",     width=70,  minwidth=66,  anchor="center", stretch=False)
             self.tree.column("status", width=120, minwidth=100, anchor="w",      stretch=False)
             self.tree.column("ga",     width=100, minwidth=90,  anchor="w",      stretch=False)
-            self.tree.column("old",    width=280, minwidth=160, anchor="w",      stretch=True)
-            self.tree.column("new",    width=300, minwidth=200, anchor="w",      stretch=True)
+            # Startbreiten so gewählt, dass alle Spalten inkl. Visu/Logik/Uhr bei der
+            # Standard-Fenstergröße sichtbar sind; die Namensspalten wachsen mit.
+            self.tree.column("old",    width=220, minwidth=140, anchor="w",      stretch=True)
+            self.tree.column("new",    width=240, minwidth=160, anchor="w",      stretch=True)
             for col in self._REF_COLUMNS:
                 self.tree.column(col, width=66, minwidth=56, anchor="center", stretch=False)
             self.tree.grid(row=0, column=0, sticky="nsew")
