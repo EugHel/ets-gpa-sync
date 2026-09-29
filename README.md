@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Built with Python](https://img.shields.io/badge/built%20with-Python%203.14-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-103%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-147%20passing-brightgreen.svg)](#)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#)
 
 <div align="center">
@@ -42,7 +42,10 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** nutzt, kenn
 - ✅ **Tabellarischer Vergleich** mit Filter- und Suchfunktion
 - ✅ **Selektive Synchronisation** — pro Gruppenadresse einzeln entscheiden
 - ✅ **Dark & Light Mode** mit anpassbaren Schriftgrößen
-- ✅ **CSV-Export** für Dokumentation und Audit
+- ✅ **GPA-Verweise** — wo wird ein Datenpunkt verwendet? Visu-Ansichten (mit Raum und
+  Benutzern), Logikeditor und Zeitschaltuhren; Filter für ungenutzte Datenpunkte
+- ✅ **Auswirkungsprüfung** vor dem Synchronisieren
+- ✅ **CSV-Export** für Dokumentation und Audit (inkl. Verweise)
 
 ---
 

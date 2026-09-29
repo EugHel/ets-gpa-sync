@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .ga import int_to_ga
-from .models import EtsGroupAddress, GpaDatapoint, SyncCandidate, SyncStatus
+from .models import DatapointReferences, EtsGroupAddress, GpaDatapoint, SyncCandidate, SyncStatus
 from .utils import normalize_name_for_compare
 
 
@@ -219,3 +220,77 @@ def build_partial_candidates(
             )
 
     return rows
+
+
+# ── Querverweis-Filter ─────────────────────────────────────────────────────────
+
+REFERENCE_FILTERS: Tuple[str, ...] = ("Alle", "Verwendet", "Ungenutzt", "In Logik", "Mit Zeitschaltuhr")
+
+
+def matches_reference_filter(refs: Optional[DatapointReferences], mode: str) -> bool:
+    """Prüft eine Tabellenzeile gegen den Verweise-Filter.
+
+    Zeilen ohne GPA-Datenpunkt (refs is None, z. B. "Nur ETS") erscheinen nur bei "Alle".
+    """
+    if mode == "Alle":
+        return True
+    if refs is None:
+        return False
+    if mode == "Verwendet":
+        return not refs.is_unused
+    if mode == "Ungenutzt":
+        return refs.is_unused
+    if mode == "In Logik":
+        return bool(refs.logic)
+    if mode == "Mit Zeitschaltuhr":
+        return bool(refs.timers)
+    return True
+
+
+# ── Auswirkung einer Synchronisation ───────────────────────────────────────────
+
+@dataclass
+class SyncImpact:
+    """Wo die ausgewählten Umbenennungen im GPA-Projekt wirken."""
+    renamed: int = 0
+    in_visu: int = 0          # umbenannte Datenpunkte mit Visu-Verwendung
+    in_logic: int = 0         # … mit Logik-Verwendung
+    in_timers: int = 0        # … mit Zeitschaltuhr
+    unused: int = 0           # … ohne jede Verwendung
+    views: List[str] = field(default_factory=list)        # betroffene Ansichten (eindeutig)
+    logic_pages: List[str] = field(default_factory=list)  # betroffene Logikseiten (eindeutig)
+    rows: List[Tuple[SyncCandidate, Optional[DatapointReferences]]] = field(default_factory=list)
+
+
+def summarize_sync_impact(
+    candidates: Sequence[SyncCandidate],
+    references: Mapping[str, DatapointReferences],
+) -> SyncImpact:
+    """Fasst zusammen, welche Visu-Ansichten, Logikseiten und Zeitschaltuhren die
+    ausgewählten Umbenennungen betreffen (nur Änderung/Leerzeichen, nur ausgewählt)."""
+    impact = SyncImpact()
+    views: Dict[str, None] = {}
+    pages: Dict[str, None] = {}
+    for c in candidates:
+        if not c.selected or c.status not in (SyncStatus.AENDERUNG, SyncStatus.LEERZEICHEN):
+            continue
+        refs = references.get(c.zip_path)
+        impact.renamed += 1
+        impact.rows.append((c, refs))
+        if refs is None:
+            continue
+        if refs.visu:
+            impact.in_visu += 1
+            for v in refs.visu:
+                views.setdefault(f"{v.location + ' → ' if v.location else ''}{v.view_name}", None)
+        if refs.logic:
+            impact.in_logic += 1
+            for lg in refs.logic:
+                pages.setdefault(lg.page_name, None)
+        if refs.timers:
+            impact.in_timers += 1
+        if refs.is_unused:
+            impact.unused += 1
+    impact.views = list(views)
+    impact.logic_pages = list(pages)
+    return impact

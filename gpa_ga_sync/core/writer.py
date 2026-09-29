@@ -4,9 +4,9 @@ import copy
 import csv
 import zipfile
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Mapping, Optional, Sequence
 
-from .models import SyncCandidate, SyncStatus
+from .models import DatapointReferences, SyncCandidate, SyncStatus
 from .utils import detect_encoding, replace_entity_name_preserve_xml
 from ..log import get_logger
 
@@ -55,9 +55,30 @@ def write_updated_gpa(
     return changed
 
 
-def export_candidates_csv(candidates: Sequence[SyncCandidate], csv_path: Path) -> None:
+def export_candidates_csv(
+    candidates: Sequence[SyncCandidate],
+    csv_path: Path,
+    references: Optional[Mapping[str, DatapointReferences]] = None,
+) -> None:
+    """Schreibt die Prüfliste als CSV (Semikolon, UTF-8 mit BOM für Excel).
+
+    Mit references kommen die GPA-Verweise hinzu: Anzahl Visu/Logik/Zeitschaltuhr
+    und eine lesbare Liste der Verwendungen.
+    """
+    header = ["Ausgewählt", "Status", "GA", "Quelle", "Aktueller GPA-Name", "Neuer GPA-Name", "Datei im GPA"]
+    if references is not None:
+        header += ["Visu", "Logik", "Zeitschaltuhr", "Verwendet in"]
     with csv_path.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f, delimiter=";")
-        writer.writerow(["Ausgewählt", "Status", "GA", "Quelle", "Aktueller GPA-Name", "Neuer GPA-Name", "Datei im GPA"])
+        writer.writerow(header)
         for c in candidates:
-            writer.writerow(["ja" if c.selected else "nein", c.status, c.group_address, c.source_field, c.current_name, c.new_name, c.zip_path])
+            row = ["ja" if c.selected else "nein", c.status, c.group_address, c.source_field,
+                   c.current_name, c.new_name, c.zip_path]
+            if references is not None:
+                refs = references.get(c.zip_path) if c.zip_path else None
+                if refs is None:
+                    row += ["", "", "", ""]
+                else:
+                    row += [len(refs.visu), len(refs.logic), len(refs.timers),
+                            refs.summary_text() or "nicht verwendet"]
+            writer.writerow(row)
