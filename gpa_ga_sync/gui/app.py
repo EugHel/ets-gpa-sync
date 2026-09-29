@@ -31,7 +31,10 @@ from ..core import (
     build_reference_map,
     build_sync_candidates,
     export_candidates_csv,
+    format_ga_roles,
     matches_reference_filter,
+    most_common_users,
+    source_label,
     parse_ets_ga_export,
     parse_gpa_datapoints,
     summarize_sync_impact,
@@ -250,7 +253,17 @@ def run_gui() -> None:
                 "diff":      tk.StringVar(value="0"),
                 "selected":  tk.StringVar(value="0"),
                 "conflicts": tk.StringVar(value="0"),
+                # Nur GPA-Prüfansicht (ohne ETS):
+                "used":      tk.StringVar(value="0"),
+                "logic":     tk.StringVar(value="0"),
+                "unused":    tk.StringVar(value="0"),
+                "timer":     tk.StringVar(value="0"),
             }
+            # True, wenn nur ein GPA-Projekt analysiert wurde (reine Prüfansicht).
+            self._gpa_only = False
+            self.datapoint_by_path: Dict[str, GpaDatapoint] = {}
+            # Projekttypische Benutzer-Kombination; im Panel nur Abweichungen zeigen.
+            self._default_users: tuple = ()
             self.candidates: List[SyncCandidate] = []
             self.datapoint_name_by_path: Dict[str, str] = {}
             # GPA-Verweise (Visu/Logik/Zeitschaltuhr) je Datenpunkt, im Analyse-Worker
@@ -269,6 +282,7 @@ def run_gui() -> None:
                 "#0":    "Sync",
                 "status":"Status",
                 "ga":    "GA",
+                "room":  "Raum",
                 "old":   "Aktueller GPA-Name",
                 "new":   "Neuer GPA-Name aus ETS",
                 "visu":  "Visu",
@@ -851,6 +865,8 @@ def run_gui() -> None:
                 ("✅",  "Konflikte",         self.kpi_vars["conflicts"], "#16a34a"),
             ]
             self._kpi_canvases: List[tk.Canvas] = []
+            # Je Karte: Widgets für den Wechsel zwischen ETS-Vergleich und GPA-Prüfansicht.
+            self._kpi_cards: List[Dict] = []
             for col, (icon, title, var, color) in enumerate(kpi_defs):
                 card = self._card(row, 0, col, padx=(0, 8) if col < 4 else (0, 0))
                 card.columnconfigure(1, weight=1)
@@ -868,24 +884,31 @@ def run_gui() -> None:
                     if title == "Konflikte":
                         self._conflict_icon = icon_widget
                 icon_widget.grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
-                ctk.CTkLabel(card, text=title,
-                             font=self._fonts["body"],
-                             anchor="w").grid(
-                    row=0, column=1, sticky="w", padx=(0, 10), pady=(8, 0))
-                ctk.CTkLabel(card, textvariable=var,
-                             font=self._fonts["kpi"],
-                             anchor="w").grid(
-                    row=1, column=1, sticky="w", padx=(0, 10), pady=(0, 8))
+                # Ersatz-Symbol für die GPA-Prüfansicht (anfangs ausgeblendet).
+                alt_icon = ctk.CTkLabel(card, text="", font=self._fonts["large"], width=44)
+                title_label = ctk.CTkLabel(card, text=title,
+                                           font=self._fonts["body"],
+                                           anchor="w")
+                title_label.grid(row=0, column=1, sticky="w", padx=(0, 10), pady=(8, 0))
+                value_label = ctk.CTkLabel(card, textvariable=var,
+                                           font=self._fonts["kpi"],
+                                           anchor="w")
+                value_label.grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(0, 8))
+                for w in (card, icon_widget, alt_icon, title_label, value_label):
+                    w.bind("<Button-1>", lambda _e, i=col: self._on_kpi_click(i), add="+")
+                self._kpi_cards.append(dict(
+                    card=card, icon=icon_widget, alt_icon=alt_icon, title=title_label,
+                    value=value_label, default=(title, var)))
 
         def _build_center_panel(self, parent) -> None:
             center = self._card(parent, 2)
             center.columnconfigure(0, weight=1)
             center.rowconfigure(3, weight=1)
 
-            ctk.CTkLabel(center, text="Datenpunkte – Änderungen",
-                         font=self._fonts["normal"],
-                         anchor="w").grid(row=0, column=0, sticky="w",
-                                          padx=16, pady=(12, 6))
+            self._center_title = ctk.CTkLabel(center, text="Datenpunkte – Änderungen",
+                                              font=self._fonts["normal"],
+                                              anchor="w")
+            self._center_title.grid(row=0, column=0, sticky="w", padx=16, pady=(12, 6))
 
             # Toolbar
             tbar = ctk.CTkFrame(center, corner_radius=0, fg_color="transparent")
@@ -1002,20 +1025,23 @@ def run_gui() -> None:
             table_frame.columnconfigure(0, weight=1)
             table_frame.rowconfigure(0, weight=1)
 
-            cols = ("status", "ga", "old", "new") + self._REF_COLUMNS
+            cols = ("status", "ga", "room", "old", "new") + self._REF_COLUMNS
             self.tree = ttk.Treeview(table_frame, columns=cols,
                                      show="tree headings", selectmode="extended")
             self._refresh_headings()
             self.tree.column("#0",     width=70,  minwidth=66,  anchor="center", stretch=False)
             self.tree.column("status", width=120, minwidth=100, anchor="w",      stretch=False)
-            self.tree.column("ga",     width=100, minwidth=90,  anchor="w",      stretch=False)
+            self.tree.column("ga",     width=130, minwidth=90,  anchor="w",      stretch=False)
             # Startbreiten so gewählt, dass alle Spalten inkl. Visu/Logik/Uhr bei der
-            # Standard-Fenstergröße sichtbar sind; die Namensspalten wachsen mit.
-            self.tree.column("old",    width=220, minwidth=140, anchor="w",      stretch=True)
-            self.tree.column("new",    width=240, minwidth=160, anchor="w",      stretch=True)
+            # Standard-Fenstergröße sichtbar sind; die Text-Spalten wachsen mit.
+            # Welche Spalten sichtbar sind, steuert _apply_view_mode (displaycolumns).
+            self.tree.column("room",   width=170, minwidth=110, anchor="w",      stretch=True)
+            self.tree.column("old",    width=200, minwidth=140, anchor="w",      stretch=True)
+            self.tree.column("new",    width=200, minwidth=140, anchor="w",      stretch=True)
             for col in self._REF_COLUMNS:
                 self.tree.column(col, width=66, minwidth=56, anchor="center", stretch=False)
             self.tree.grid(row=0, column=0, sticky="nsew")
+            self.tree.bind("<Configure>", self._fit_columns, add="+")
 
             yscroll = ctk.CTkScrollbar(table_frame, command=self.tree.yview)
             self.tree.configure(yscrollcommand=yscroll.set)
@@ -1065,39 +1091,49 @@ def run_gui() -> None:
                          font=self._fonts["subheader"],
                          anchor="w").grid(row=0, column=0, sticky="w", pady=(0, 4))
 
+            # Feld-Widgets je Name, damit die ETS-Felder in der GPA-Prüfansicht
+            # ausgeblendet werden können (_apply_view_mode).
+            self._detail_widgets: Dict[str, tuple] = {}
+
             def add_field(label: str, var_name: str, readonly: bool = True,
                           row: int = 0) -> ctk.CTkEntry:
-                ctk.CTkLabel(form, text=label, text_color=("gray30", "gray65"),
-                             font=self._fonts["property_label"],
-                             anchor="w").grid(row=row, column=0, sticky="w", pady=(6, 1))
+                label_widget = ctk.CTkLabel(form, text=label, text_color=("gray30", "gray65"),
+                                            font=self._fonts["property_label"], anchor="w")
+                label_widget.grid(row=row, column=0, sticky="w", pady=(6, 1))
                 entry = ctk.CTkEntry(
                     form, textvariable=self.detail_vars[var_name],
                     state="readonly" if readonly else "normal",
                     font=self._fonts["property_label"],
                     text_color=("#1a1a1a", "#e8e8e8"))
                 entry.grid(row=row + 1, column=0, sticky="ew")
+                self._detail_widgets[var_name] = (label_widget, entry)
                 return entry
 
             add_field("Status",               "status", row=1)
             add_field("Gruppenadresse",        "ga",     row=3)
-            add_field("Quelle",                "source", row=5)
-            add_field("Aktueller GPA-Name",      "old",    row=7)
+            # Alle Adressen des Datenpunkts nach Rolle (Senden/Status/Hören).
+            self.detail_ga_roles = ctk.CTkLabel(
+                form, text="", font=self._fonts["detail_sub"], justify="left",
+                text_color=("gray30", "gray70"), anchor="w", wraplength=260, height=20)
+            self.detail_ga_roles.grid(row=5, column=0, sticky="ew", pady=(2, 0))
+            add_field("Quelle",                "source", row=6)
+            add_field("Aktueller GPA-Name",      "old",    row=8)
             self.detail_new_entry = add_field("Neuer GPA-Name aus ETS (editierbar)", "new",
-                                              readonly=False, row=9)
+                                              readonly=False, row=10)
             self.detail_new_entry.bind("<KeyRelease>", self.on_detail_new_name_changed)
             self.detail_new_entry.bind("<Return>",     self.on_detail_new_name_changed)
 
             # Verweise: gegliederte Liste (Visu / Logik / Zeitschaltuhr) in einem
             # scrollbaren Bereich, der die Resthöhe des Panels füllt. Aufbau bei
             # jedem Zeilenwechsel (_populate_detail_xrefs), gleiche Optik wie das Popup.
-            form.rowconfigure(12, weight=1)
+            form.rowconfigure(13, weight=1)
             self.detail_xref_header = ctk.CTkLabel(
                 form, text="GPA-Verweise", text_color=("gray30", "gray65"),
                 font=self._fonts["property_label"], anchor="w")
-            self.detail_xref_header.grid(row=11, column=0, sticky="w", pady=(6, 1))
+            self.detail_xref_header.grid(row=12, column=0, sticky="w", pady=(6, 1))
             self.detail_xref_frame = ctk.CTkScrollableFrame(
                 form, fg_color="transparent", corner_radius=0)
-            self.detail_xref_frame.grid(row=12, column=0, sticky="nsew")
+            self.detail_xref_frame.grid(row=13, column=0, sticky="nsew")
             self.detail_xref_frame.columnconfigure(0, weight=1)
 
         def _build_footer(self) -> None:
@@ -1272,7 +1308,7 @@ def run_gui() -> None:
         def _refresh_headings(self) -> None:
             if not hasattr(self, "tree"):
                 return
-            for col in ("#0", "status", "ga", "old", "new") + self._REF_COLUMNS:
+            for col in ("#0", "status", "ga", "room", "old", "new") + self._REF_COLUMNS:
                 try:
                     anchor = "center" if col in self._REF_COLUMNS else "w"
                     self.tree.heading(col, text=self._heading_text(col), anchor=anchor,
@@ -1295,6 +1331,10 @@ def run_gui() -> None:
                     return (c.status.lower(), c.group_address_value, c.current_name.lower())
                 if column == "ga":
                     return (c.group_address_value, c.group_address)
+                if column == "room":
+                    # Ohne Raum ans Ende (bei aufsteigender Sortierung).
+                    room = self._room_text(c)
+                    return (room == "", room.lower(), c.current_name.lower())
                 if column == "old":
                     return (c.current_name.lower(), c.group_address_value)
                 if column == "new":
@@ -1338,8 +1378,12 @@ def run_gui() -> None:
                 'Die Spalten „Visu“, „Logik“ und „Uhr“ zeigen, wo ein Datenpunkt im GPA-Projekt '
                 'verwendet wird: in Visu-Ansichten, als Baustein im Logikeditor oder durch eine '
                 'Zeitschaltuhr. Ein Klick auf eine Zahl öffnet die Details (Standort, Logikseite, '
-                'Schaltzeiten, sichtbar für welche Benutzer). Mit dem Filter „Ungenutzt“ findest '
-                'du Datenpunkte, die nirgends verwendet werden.')
+                'Schaltzeiten, sichtbar für welche Benutzer). Die Spalte „Raum“ zeigt den Standort '
+                'der Visu-Ansicht. Mit dem Filter „Ungenutzt“ findest du Datenpunkte, die nirgends '
+                'verwendet werden.\n\n'
+                'GPA-Prüfansicht:\n'
+                'Wird nur ein GPA-Projekt analysiert, blendet das Tool die ETS-Spalten aus. Die '
+                'Kennzahlen „Verwendet“, „In Logik“ und „Ungenutzt“ filtern per Klick die Tabelle.')
 
         # ── Status / KPIs ──────────────────────────────────────────────────────
 
@@ -1362,8 +1406,139 @@ def run_gui() -> None:
                     self._conflict_icon.configure(text="❌", text_color="#dc2626")
                 else:
                     self._conflict_icon.configure(text="✅", text_color="#16a34a")
+            refs = self.references.values()
+            self.kpi_vars["used"].set(str(sum(1 for r in refs if not r.is_unused)))
+            self.kpi_vars["logic"].set(str(sum(1 for r in refs if r.logic)))
+            self.kpi_vars["unused"].set(str(sum(1 for r in refs if r.is_unused)))
+            self.kpi_vars["timer"].set(str(sum(1 for r in refs if r.timers)))
             if hasattr(self, "table_count_var"):
                 self.table_count_var.set(f"Zeilen: {visible} von {total}")
+
+        # ── Ansichtsmodus: ETS-Vergleich vs. GPA-Prüfansicht ───────────────────
+
+        # KPI-Karten der GPA-Prüfansicht: Index → (Titel, kpi_var, Symbol, Farbe, Filter)
+        _GPA_KPIS = {
+            1: ("Verwendet", "used", "🔗", "#16a34a", "Verwendet"),
+            2: ("In Logik", "logic", "⚙", "#0ea5e9", "In Logik"),
+            3: ("Ungenutzt", "unused", "○", "#f59e0b", "Ungenutzt"),
+        }
+
+        def _gpa_kpi(self, index: int):
+            """KPI-Definition der Prüfansicht; ohne Logik, aber mit Uhren zeigt Karte 2
+            die Zeitschaltuhren statt einer nutzlosen „In Logik 0“."""
+            if (index == 2 and not self._project_has("logic")
+                    and self._project_has("timer")):
+                return ("Mit Zeitschaltuhr", "timer", "⏰", "#a855f7", "Mit Zeitschaltuhr")
+            return self._GPA_KPIS.get(index)
+
+        def _project_has(self, kind: str) -> bool:
+            """Ob das analysierte GPA-Projekt überhaupt Logik-/Uhr-Verweise enthält."""
+            attr = {"logic": "logic", "timer": "timers"}[kind]
+            return any(getattr(r, attr) for r in self.references.values())
+
+        def _apply_view_mode(self) -> None:
+            """Blendet je nach Modus Spalten, Kennzahlen, Knöpfe und Felder ein/aus.
+
+            GPA-Prüfansicht (nur GPA geladen): keine ETS-Spalten, kein Sync, KPIs
+            Verwendet / In Logik / Ungenutzt (anklickbar als Filter). Logik- und
+            Uhr-Spalte nur, wenn das Projekt solche Verweise enthält.
+            """
+            gpa_only = self._gpa_only
+            has_refs = bool(self.references)
+            conflicts = any(c.status == SyncStatus.ADRESSKONFLIKT for c in self.candidates)
+
+            cols: List[str] = []
+            if not gpa_only or conflicts:
+                cols.append("status")
+            cols.append("ga")
+            if has_refs:
+                cols.append("room")
+            cols.append("old")
+            if not gpa_only:
+                cols.append("new")
+            if has_refs:
+                cols.append("visu")
+                if self._project_has("logic"):
+                    cols.append("logic")
+                if self._project_has("timer"):
+                    cols.append("timer")
+            self.tree.configure(displaycolumns=cols,
+                                show="headings" if gpa_only else "tree headings")
+
+            self._center_title.configure(
+                text="Datenpunkte" if gpa_only else "Datenpunkte – Änderungen")
+            for name in ("select_all_button", "deselect_all_button", "sync_button"):
+                widget = getattr(self, name)
+                widget.grid_remove() if gpa_only else widget.grid()
+            # Panel: "Neuer Name" nur im Vergleich; "Status" in der Prüfansicht nur,
+            # wenn es Adress-Konflikte gibt (sonst stünde überall "Nur GPA").
+            for name, hide in (("new", gpa_only), ("status", gpa_only and not conflicts)):
+                for w in self._detail_widgets[name]:
+                    w.grid_remove() if hide else w.grid()
+            self.after_idle(self._fit_columns)
+
+            for i, info in enumerate(self._kpi_cards):
+                alt = self._gpa_kpi(i) if gpa_only else None
+                if alt:
+                    title, var_key, icon, color, _mode = alt
+                    info["icon"].grid_remove()
+                    info["alt_icon"].configure(text=icon, text_color=color)
+                    info["alt_icon"].grid(row=0, column=0, rowspan=2, padx=(14, 8),
+                                          pady=8, sticky="w")
+                    info["title"].configure(text=title)
+                    info["value"].configure(textvariable=self.kpi_vars[var_key])
+                    cursor = "hand2"
+                else:
+                    title, var = info["default"]
+                    info["alt_icon"].grid_remove()
+                    info["icon"].grid()
+                    info["title"].configure(text=title)
+                    info["value"].configure(textvariable=var)
+                    cursor = ""
+                for key in ("card", "title", "value", "alt_icon"):
+                    try:
+                        info[key].configure(cursor=cursor)
+                    except Exception:  # pragma: no cover - nicht alle Widgets kennen cursor
+                        pass
+
+        # Gewichte der mitwachsenden Text-Spalten beim Verteilen der Tabellenbreite.
+        _STRETCH_WEIGHTS = {"room": 1.0, "old": 1.4, "new": 1.4}
+
+        def _fit_columns(self, _event=None) -> None:
+            """Verteilt die freie Tabellenbreite auf die sichtbaren Text-Spalten.
+
+            ttk.Treeview passt die Spalten nach einem Wechsel von displaycolumns nicht
+            von selbst an – ohne das bliebe rechts Leerraum bzw. Spalten würden abgeschnitten.
+            """
+            if not hasattr(self, "tree"):
+                return
+            total = self.tree.winfo_width()
+            if total <= 1:
+                return
+            shown = tuple(self.tree["displaycolumns"])
+            if not shown or shown == ("#all",):
+                shown = tuple(self.tree["columns"])
+            stretch = [c for c in shown if c in self._STRETCH_WEIGHTS]
+            fixed = sum(int(self.tree.column(c, "width")) for c in shown if c not in stretch)
+            if "tree" in str(self.tree.cget("show")):
+                fixed += int(self.tree.column("#0", "width"))
+            free = total - fixed - 4
+            weight_sum = sum(self._STRETCH_WEIGHTS[c] for c in stretch)
+            if not stretch or free <= 0:
+                return
+            for c in stretch:
+                width = int(free * self._STRETCH_WEIGHTS[c] / weight_sum)
+                self.tree.column(c, width=max(int(self.tree.column(c, "minwidth")), width))
+
+        def _on_kpi_click(self, index: int) -> None:
+            """In der GPA-Prüfansicht filtern die KPI-Karten die Tabelle."""
+            alt = self._gpa_kpi(index)
+            if not self._gpa_only or not alt:
+                return
+            mode = alt[4]
+            self.ref_filter_mode = REFERENCE_FILTERS[0] if self.ref_filter_mode == mode else mode
+            self._update_ref_filter_labels()
+            self.refresh_tree()
 
         def _set_busy(self, busy: bool) -> None:
             state = "disabled" if busy else "normal"
@@ -1480,33 +1655,37 @@ def run_gui() -> None:
                       len(datapoints), len(ets_map), len(candidates))
             self.candidates = candidates
             self.datapoint_name_by_path = {dp.zip_path: dp.entity_name for dp in datapoints}
+            self.datapoint_by_path = {dp.zip_path: dp for dp in datapoints}
             self.references = references or {}
+            self._gpa_only = bool(datapoints) and not ets_map
+            self._default_users = most_common_users(self.references)
             # Suchtext je Datenpunkt: Ansichten, Standorte, Logikseiten, Zeitschaltuhren.
             self._ref_search_text = {
                 path: refs.summary_text().lower() for path, refs in self.references.items()}
             self.sort_column = "ga"
             self.sort_reverse = False
             self._set_busy(False)
+            self._apply_view_mode()
             self._update_ref_filter_labels()
             self.refresh_tree()
             self._update_summary(len(datapoints), len(ets_map))
             unused = sum(1 for r in self.references.values() if r.is_unused)
             in_logic = sum(1 for r in self.references.values() if r.logic)
-            ref_info = (f" GPA-Verweise: {in_logic} in Logik, {unused} ungenutzt."
+            ref_info = (f" · {in_logic} in Logik · {unused} ungenutzt"
                         if self.references else "")
             if datapoints and ets_map:
                 self.status_var.set(
-                    f"Analyse fertig: {len(datapoints)} GPA-Datenpunkte, "
-                    f"{len(ets_map)} ETS-Gruppenadressen, {len(candidates)} Unterschiede gefunden."
+                    f"Vergleich: {len(datapoints)} GPA-Datenpunkte · {len(ets_map)} ETS-Adressen · "
+                    f"{len(candidates)} {'Unterschied' if len(candidates) == 1 else 'Unterschiede'}"
                     + ref_info)
             elif datapoints:
                 self.status_var.set(
-                    f"GPA analysiert: {len(datapoints)} GPA-Datenpunkte gefunden und in der Liste angezeigt."
-                    + ref_info + " Für Unterschiede zusätzlich eine ETS-XML auswählen.")
+                    f"GPA-Prüfansicht: {len(datapoints)} Datenpunkte" + ref_info
+                    + " – für den Namensabgleich zusätzlich eine ETS-Datei laden.")
             else:
                 self.status_var.set(
-                    f"ETS-XML analysiert: {len(ets_map)} ETS-Gruppenadressen gefunden und in der Liste angezeigt. "
-                    "Für Unterschiede zusätzlich ein GPA-Projekt auswählen.")
+                    f"ETS: {len(ets_map)} Gruppenadressen – für den Abgleich zusätzlich "
+                    "ein GPA-Projekt laden.")
 
         def _analyze_error(self, error: Exception) -> None:
             _log.error("Analysefehler: %s", error, exc_info=True)
@@ -1546,6 +1725,10 @@ def run_gui() -> None:
             return {"visu": len(refs.visu), "logic": len(refs.logic),
                     "timer": len(refs.timers)}.get(column, -1)
 
+        def _room_text(self, c: SyncCandidate) -> str:
+            refs = self._refs_for(c)
+            return refs.room_label() if refs is not None else ""
+
         def _ref_cell_text(self, c: SyncCandidate, column: str) -> str:
             count = self._ref_count(c, column)
             if count < 0:
@@ -1558,7 +1741,17 @@ def run_gui() -> None:
                 return
             rows = [self._refs_for(c) for c in self.candidates]
             self._ref_filter_labels: Dict[str, str] = {}
+            # Filter ohne jeden Treffer im Projekt (keine Logik / keine Uhr) weglassen.
+            hidden = set()
+            if self.references and not self._project_has("logic"):
+                hidden.add("In Logik")
+            if self.references and not self._project_has("timer"):
+                hidden.add("Mit Zeitschaltuhr")
+            if self.ref_filter_mode in hidden:
+                self.ref_filter_mode = REFERENCE_FILTERS[0]
             for mode in REFERENCE_FILTERS:
+                if mode in hidden:
+                    continue
                 if mode == REFERENCE_FILTERS[0] or not self.references:
                     label = mode
                 else:
@@ -1612,8 +1805,8 @@ def run_gui() -> None:
                 # Datenpunkt leer. Keine Zeilenfärbung für ungenutzte Datenpunkte.
                 ref_texts = tuple(self._ref_cell_text(c, col) for col in self._REF_COLUMNS)
                 self.tree.insert("", "end", iid=iid, text=mark,
-                                 values=(c.status, c.group_address, c.current_name,
-                                         c.new_name) + ref_texts,
+                                 values=(c.status, c.group_address, self._room_text(c),
+                                         c.current_name, c.new_name) + ref_texts,
                                  tags=tuple(tags))
                 self.visible_iids.append(iid)
                 visible_counter += 1
@@ -1701,19 +1894,25 @@ def run_gui() -> None:
                 self.tree.configure(cursor=cursor)
 
         def _is_column(self, identify_result: str, name: str) -> bool:
-            """Prüft, ob eine identify_column()-Kennung (#N) der Datenspalte 'name' entspricht."""
+            """Prüft, ob eine identify_column()-Kennung (#N) der Datenspalte 'name' entspricht.
+
+            identify_column zählt nur die SICHTBAREN Spalten (displaycolumns), die je
+            nach Ansichtsmodus wechseln – daher gegen diese Liste prüfen.
+            """
             try:
                 idx = int(identify_result.replace("#", ""))
             except ValueError:
                 return False
-            data_cols = self.tree["columns"]
-            return 1 <= idx <= len(data_cols) and data_cols[idx - 1] == name
+            shown = tuple(self.tree["displaycolumns"])
+            if not shown or shown == ("#all",):
+                shown = tuple(self.tree["columns"])
+            return 1 <= idx <= len(shown) and shown[idx - 1] == name
 
         def on_tree_double_click(self, event) -> Optional[str]:
             region = self.tree.identify("region", event.x, event.y)
             column = self.tree.identify_column(event.x)
             row    = self.tree.identify_row(event.y)
-            if region == "cell" and column == "#4" and row:
+            if region == "cell" and self._is_column(column, "new") and row:
                 self.start_edit_new_name(row)
                 return "break"
             return None
@@ -1737,7 +1936,7 @@ def run_gui() -> None:
             if c.status != SyncStatus.AENDERUNG:
                 return
             self._destroy_edit_entry()
-            bbox = self.tree.bbox(row, "#4")
+            bbox = self.tree.bbox(row, "new")
             if not bbox:
                 return
             x, y, w, h = bbox
@@ -1822,7 +2021,7 @@ def run_gui() -> None:
 
         def _clipboard_rows(self, iids: Sequence[str]) -> List[List[str]]:
             rows: List[List[str]] = [
-                ["Sync", "Status", "GA", "Aktueller GPA-Name", "Neuer GPA-Name aus ETS",
+                ["Sync", "Status", "GA", "Raum", "Aktueller GPA-Name", "Neuer GPA-Name aus ETS",
                  "Visu", "Logik", "Zeitschaltuhr", "Datei im GPA"]]
             for iid in iids:
                 try:
@@ -1831,8 +2030,10 @@ def run_gui() -> None:
                     continue
                 counts = [str(n) if n >= 0 else ""
                           for n in (self._ref_count(c, col) for col in self._REF_COLUMNS)]
+                refs = self._refs_for(c)
+                rooms = " | ".join(refs.rooms) if refs is not None else ""
                 rows.append(["ja" if c.selected else "nein",
-                              c.status, c.group_address,
+                              c.status, c.group_address, rooms,
                               c.current_name, c.new_name, *counts, c.zip_path])
             return rows
 
@@ -1898,12 +2099,15 @@ def run_gui() -> None:
             if not selected:
                 for var in self.detail_vars.values():
                     var.set("-")
+                self.detail_ga_roles.configure(text="")
                 self._schedule_detail_xrefs(None)
                 return
             c = self.candidates[int(selected[0])]
             self.detail_vars["status"].set(c.status)
             self.detail_vars["ga"].set(c.group_address)
-            self.detail_vars["source"].set(c.source_field)
+            dp = self.datapoint_by_path.get(c.zip_path) if c.zip_path else None
+            self.detail_ga_roles.configure(text=format_ga_roles(dp) if dp is not None else "")
+            self.detail_vars["source"].set(source_label(c.source_field))
             self.detail_vars["old"].set(c.current_name)
             self.detail_vars["new"].set(c.new_name)
             self._schedule_detail_xrefs(c)
@@ -1928,21 +2132,22 @@ def run_gui() -> None:
 
         def _render_entry(self, parent, row: int, main: str, subs: Sequence[str], *,
                           wrap: int, compact: bool, warn: bool = False) -> None:
-            """Ein Verweis-Eintrag: Hauptzeile mit Punkt, darunter gedämpfte Nebenzeilen."""
+            """Ein Verweis-Eintrag: Punkt in eigener Spalte, daneben Hauptzeile und
+            gedämpfte Nebenzeilen – so bleiben auch umbrochene Zeilen bündig eingerückt."""
             entry = ctk.CTkFrame(parent, fg_color="transparent")
             entry.grid(row=row, column=0, sticky="ew", padx=6, pady=(1, 6))
-            entry.columnconfigure(0, weight=1)
-            ctk.CTkLabel(entry, text=f"•  {main}", font=self._fonts["body"],
-                         justify="left", anchor="w", wraplength=wrap,
+            entry.columnconfigure(1, weight=1)
+            ctk.CTkLabel(entry, text="•", font=self._fonts["body"], width=14,
+                         anchor="nw").grid(row=0, column=0, sticky="nw")
+            ctk.CTkLabel(entry, text=main, font=self._fonts["body"],
+                         justify="left", anchor="w", wraplength=max(120, wrap - 20),
                          text_color=("#b45309", "#fbbf24") if warn else None).grid(
-                row=0, column=0, sticky="ew")
-            # Nebenzeilen per padx eingerückt (nicht per Leerzeichen), damit auch
-            # umbrochene Zeilen bündig bleiben.
+                row=0, column=1, sticky="ew")
             for i, sub in enumerate(s for s in subs if s):
-                ctk.CTkLabel(entry, text=sub, font=self._fonts["table_body"], justify="left",
-                             text_color=("gray30", "gray70"), anchor="w", height=18,
-                             wraplength=max(120, wrap - 24)).grid(
-                    row=i + 1, column=0, sticky="ew", padx=(18, 0))
+                ctk.CTkLabel(entry, text=sub, font=self._fonts["detail_sub"], justify="left",
+                             text_color=("gray30", "gray70"), anchor="w", height=20,
+                             wraplength=max(120, wrap - 20)).grid(
+                    row=i + 1, column=1, sticky="ew")
 
         def _render_visu_entry(self, parent, row: int, ref: VisuReference, *,
                                wrap: int, compact: bool) -> None:
@@ -1964,8 +2169,10 @@ def run_gui() -> None:
                     subs.append(german if compact else f"{german} ({ref.channel_type})")
                 else:
                     subs.append(ref.channel_type)
-            if ref.users:
-                subs.append("👤 " + ", ".join(ref.users))
+            # Benutzer: im Popup immer, im Panel nur bei Abweichung vom projekttypischen
+            # Normalfall (sonst stünde bei jeder Ansicht dieselbe Zeile).
+            if ref.users and (not compact or ref.users != self._default_users):
+                subs.append("👤 Sichtbar für: " + ", ".join(ref.users))
             self._render_entry(parent, row, main, subs, wrap=wrap, compact=compact)
 
         def _render_logic_entry(self, parent, row: int, ref: LogicReference, *,

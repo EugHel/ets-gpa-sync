@@ -5,7 +5,7 @@
 ## ✅ Bereits umgesetzt (v0.x — interne Versionen)
 
 * ✅ **Stabilität**: Threading für reaktionsfähige GUI während Analyse
-* ✅ **Code-Qualität**: 147 Unit-Tests mit pytest
+* ✅ **Code-Qualität**: 152 Unit-Tests mit pytest
 * ✅ **GPA-Verweise**: Verwendung jedes Datenpunkts in Visu, Logik und Zeitschaltuhren,
   Filter „Ungenutzt“, Auswirkungsprüfung vor dem Sync (v0.10.0-beta)
 * ✅ **Architektur**: Modulare Package-Struktur (`gpa_ga_sync/`)

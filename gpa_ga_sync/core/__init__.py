@@ -31,8 +31,11 @@ from .sync import (
     SyncImpact,
     build_partial_candidates,
     build_sync_candidates,
+    format_ga_roles,
     make_unique_name,
     matches_reference_filter,
+    most_common_users,
+    source_label,
     summarize_sync_impact,
 )
 from .utils import detect_encoding, normalize_name_for_compare, replace_entity_name_preserve_xml
@@ -47,5 +50,6 @@ __all__ = [
     "resolve_datapoint_references", "build_reference_map", "datapoint_uid",
     "build_partial_candidates", "build_sync_candidates",
     "REFERENCE_FILTERS", "matches_reference_filter", "SyncImpact", "summarize_sync_impact",
+    "format_ga_roles", "most_common_users", "source_label",
     "export_candidates_csv", "write_updated_gpa",
 ]

@@ -16,6 +16,7 @@ from gpa_ga_sync.core import (
     REFERENCE_FILTERS,
     DatapointReferences,
     GpaCrossRefIndex,
+    GpaDatapoint,
     LogicReference,
     SyncCandidate,
     SyncStatus,
@@ -24,10 +25,13 @@ from gpa_ga_sync.core import (
     build_reference_map,
     datapoint_uid,
     export_candidates_csv,
+    format_ga_roles,
     matches_reference_filter,
+    most_common_users,
     parse_gpa_datapoints,
     resolve_cross_reference_views,
     resolve_datapoint_references,
+    source_label,
     summarize_sync_impact,
 )
 
@@ -637,7 +641,8 @@ class TestCsvWithReferences(_TempGpaMixin, unittest.TestCase):
         self.assertEqual(rows[0][-4:], ["Visu", "Logik", "Zeitschaltuhr", "Verwendet in"])
         self.assertEqual(rows[1][-4:], ["0", "1", "0", "Logik: Seite (Ausgang)"])
         self.assertEqual(rows[2][-4:], ["0", "0", "0", "nicht verwendet"])
-        self.assertEqual(rows[3][-4:], ["", "", "", ""])
+        self.assertEqual(rows[3][-5:], ["", "", "", "", ""])
+        self.assertEqual(rows[0][-5], "Raum")
 
     def test_csv_without_references_unchanged(self):
         path = self._csv_path()
@@ -645,6 +650,51 @@ class TestCsvWithReferences(_TempGpaMixin, unittest.TestCase):
             [SyncCandidate(True, SyncStatus.AENDERUNG, "a", "A", "A2", "1/1/1", 1, "W")], path)
         header = path.read_text("utf-8-sig").splitlines()[0].split(";")
         self.assertEqual(len(header), 7)
+
+
+class TestDisplayHelpers(unittest.TestCase):
+
+    def test_room_strips_root_and_subtype(self):
+        v = VisuReference(view_name="Licht",
+                          location="Gebäude und Geräte → Erdgeschoss → Küche (Raum)")
+        self.assertEqual(v.room, "Erdgeschoss → Küche")
+        self.assertEqual(VisuReference(view_name="x").room, "")
+        self.assertEqual(VisuReference(view_name="x", location="Gebäude und Geräte").room, "")
+
+    def test_room_label_with_multiple_rooms(self):
+        refs = DatapointReferences(visu=[
+            VisuReference("A", location="Gebäude und Geräte → EG → Küche (Raum)"),
+            VisuReference("B", location="Gebäude und Geräte → EG → Küche (Raum)"),
+            VisuReference("C", location="Gebäude und Geräte → OG → Bad (Raum)"),
+            VisuReference("D"),
+        ])
+        self.assertEqual(refs.rooms, ["EG → Küche", "OG → Bad"])
+        self.assertEqual(refs.room_label(), "EG → Küche (+1)")
+        self.assertEqual(DatapointReferences().room_label(), "")
+
+    def test_source_label(self):
+        self.assertEqual(source_label("WriteGroupAddress"), "Senden (Write)")
+        self.assertEqual(source_label("ReadGroupAddress"), "Status (Read)")
+        self.assertEqual(source_label("ListenerGroupAddresses"), "Hören (Listener)")
+        self.assertEqual(source_label("mehrere"), "mehrere")
+
+    def test_format_ga_roles(self):
+        dp = GpaDatapoint("p", "N", read_group_address=2056, write_group_address=2057,
+                          listener_group_addresses=(2058, 2059))
+        self.assertEqual(format_ga_roles(dp),
+                         "Senden 1/0/9 · Status 1/0/8 · Hören 1/0/10, 1/0/11")
+        self.assertEqual(format_ga_roles(GpaDatapoint("p", "N", None, 0, ())), "")
+
+    def test_most_common_users(self):
+        std = ("Admin", "Installateur")
+        refs = {
+            "a": DatapointReferences(visu=[VisuReference("A", users=std)]),
+            "b": DatapointReferences(visu=[VisuReference("B", users=std),
+                                           VisuReference("C", users=std + ("Kind",))]),
+            "c": DatapointReferences(visu=[VisuReference("?", orphan=True)]),
+        }
+        self.assertEqual(most_common_users(refs), std)
+        self.assertEqual(most_common_users({}), ())
 
 
 if __name__ == "__main__":

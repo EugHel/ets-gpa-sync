@@ -27,11 +27,20 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 - **Verwendungen-Popup** mit Knopf „In Zwischenablage kopieren“.
 - **CSV-Export** und Excel-Kopie enthalten die Verweise (Anzahl + Klartext).
 - Adress-Konflikte werden auch ohne ETS-Datei erkannt.
+- **GPA-Prüfansicht**: Wird nur ein GPA-Projekt analysiert, blendet das Tool die
+  ETS-Spalten, Auswahl-Knöpfe und „Synchronisieren“ aus. Die Kennzahlen zeigen
+  Verwendet / In Logik (bzw. Mit Zeitschaltuhr) / Ungenutzt und filtern per Klick.
+- **Spalte „Raum“** mit dem Standort der Visu-Ansicht (sortierbar, auch in CSV/Excel).
+- Eigenschaften-Panel zeigt alle Adressen nach Rolle (Senden / Status / Hören) und die
+  Quelle verständlich („Senden (Write)“).
 
 ### Geändert
 - Verweise werden einmal pro Analyse im Hintergrund vollständig aufgelöst; danach hält das
   Tool keine GPA-Datei mehr offen.
-- Eigenschaften-Panel: Verweise gegliedert und scrollbar statt fester Obergrenze.
+- Eigenschaften-Panel: Verweise gegliedert und scrollbar statt fester Obergrenze;
+  Benutzer nur, wenn sie vom Projekt-Normalfall abweichen; bündige Einrückung.
+- Logik- und Uhr-Spalte sowie die zugehörigen Filter erscheinen nur, wenn das Projekt
+  solche Verweise enthält. Kürzere Statuszeile.
 
 ### Behoben
 - Datenpunkte, die nur in der Logik verwendet werden, wurden als „0 Verweise“ angezeigt.

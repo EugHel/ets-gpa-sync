@@ -40,6 +40,8 @@ def get_fonts() -> dict:
         "table_header":   ctk.CTkFont(size=_scaled(config.FONT_SIZE_TABLE_HEADER),   weight="bold"),
         # Tabellen-Datenzeilen
         "table_body":     ctk.CTkFont(size=_scaled(config.FONT_SIZE_TABLE_BODY)),
+        # Nebenzeilen der Verweis-Einträge (Kanaltyp, Benutzer, Schaltzeiten)
+        "detail_sub":     ctk.CTkFont(size=_scaled(config.FONT_SIZE_TABLE_BODY + 1)),
         # Info-Box rechts
         "infobox":        ctk.CTkFont(size=_scaled(config.FONT_SIZE_INFOBOX)),
         # Eigenschaften-Feld-Labels

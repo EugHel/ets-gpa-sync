@@ -67,7 +67,7 @@ def export_candidates_csv(
     """
     header = ["Ausgewählt", "Status", "GA", "Quelle", "Aktueller GPA-Name", "Neuer GPA-Name", "Datei im GPA"]
     if references is not None:
-        header += ["Visu", "Logik", "Zeitschaltuhr", "Verwendet in"]
+        header += ["Raum", "Visu", "Logik", "Zeitschaltuhr", "Verwendet in"]
     with csv_path.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(header)
@@ -77,8 +77,8 @@ def export_candidates_csv(
             if references is not None:
                 refs = references.get(c.zip_path) if c.zip_path else None
                 if refs is None:
-                    row += ["", "", "", ""]
+                    row += ["", "", "", "", ""]
                 else:
-                    row += [len(refs.visu), len(refs.logic), len(refs.timers),
+                    row += [" | ".join(refs.rooms), len(refs.visu), len(refs.logic), len(refs.timers),
                             refs.summary_text() or "nicht verwendet"]
             writer.writerow(row)

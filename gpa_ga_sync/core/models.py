@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -73,6 +74,12 @@ class VisuReference:
     users: Tuple[str, ...] = ()
     orphan: bool = False  # .assoc zeigt auf keine auffindbare Ansicht
 
+    @property
+    def room(self) -> str:
+        """Kurzer Standort ohne Wurzelknoten und Subtype-Suffix, z. B. 'Erdgeschoss → Küche'."""
+        loc = re.sub(r"\s*\([^()]*\)\s*$", "", self.location).strip()
+        return re.sub(r"^Gebäude und Geräte\s*(→\s*)?", "", loc).strip()
+
 
 @dataclass(frozen=True)
 class LogicReference:
@@ -105,6 +112,18 @@ class DatapointReferences:
     @property
     def is_unused(self) -> bool:
         return self.total == 0
+
+    @property
+    def rooms(self) -> List[str]:
+        """Eindeutige Standorte der Visu-Ansichten in Fundreihenfolge."""
+        return list(dict.fromkeys(v.room for v in self.visu if v.room))
+
+    def room_label(self) -> str:
+        """Tabellentext für die Raum-Spalte: erster Standort, bei mehreren '(+N)'."""
+        rooms = self.rooms
+        if not rooms:
+            return ""
+        return rooms[0] + (f" (+{len(rooms) - 1})" if len(rooms) > 1 else "")
 
     def summary_text(self) -> str:
         """Einzeilige Kurzfassung für CSV/Suche, z. B. 'Visu: EG → Küche → Licht | Logik: Seite A'."""

@@ -222,6 +222,46 @@ def build_partial_candidates(
     return rows
 
 
+# ── Anzeigehilfen ──────────────────────────────────────────────────────────────
+
+_SOURCE_LABELS = {
+    "WriteGroupAddress": "Senden (Write)",
+    "ReadGroupAddress": "Status (Read)",
+    "ListenerGroupAddresses": "Hören (Listener)",
+}
+
+
+def source_label(source_field: str) -> str:
+    """Verständliche Beschriftung für das Quellfeld eines Kandidaten."""
+    return _SOURCE_LABELS.get(source_field, source_field)
+
+
+def format_ga_roles(dp: GpaDatapoint) -> str:
+    """Alle Gruppenadressen eines Datenpunkts nach Rolle, z. B. 'Senden 1/4/9 · Status 1/4/8'."""
+    def _ga(value: Optional[int]) -> str:
+        try:
+            return int_to_ga(value) if value else ""
+        except ValueError:
+            return ""
+
+    parts: List[str] = []
+    if _ga(dp.write_group_address):
+        parts.append(f"Senden {_ga(dp.write_group_address)}")
+    if _ga(dp.read_group_address):
+        parts.append(f"Status {_ga(dp.read_group_address)}")
+    listeners = [g for g in (_ga(v) for v in dp.listener_group_addresses) if g]
+    if listeners:
+        parts.append(f"Hören {', '.join(listeners)}")
+    return " · ".join(parts)
+
+
+def most_common_users(references: Mapping[str, DatapointReferences]) -> Tuple[str, ...]:
+    """Häufigste Benutzer-Kombination aller Visu-Ansichten (der projekttypische Normalfall)."""
+    counts: Counter = Counter(
+        v.users for refs in references.values() for v in refs.visu if not v.orphan)
+    return counts.most_common(1)[0][0] if counts else ()
+
+
 # ── Querverweis-Filter ─────────────────────────────────────────────────────────
 
 REFERENCE_FILTERS: Tuple[str, ...] = ("Alle", "Verwendet", "Ungenutzt", "In Logik", "Mit Zeitschaltuhr")
