@@ -17,18 +17,24 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from ..core import (
+    REFERENCE_FILTERS,
+    DatapointReferences,
     EtsGroupAddress,
     EtsProjectPasswordRequired,
-    GpaCrossRefIndex,
     GpaDatapoint,
+    LogicReference,
     SyncCandidate,
     SyncStatus,
+    TimerReference,
+    VisuReference,
     build_partial_candidates,
+    build_reference_map,
     build_sync_candidates,
     export_candidates_csv,
+    matches_reference_filter,
     parse_ets_ga_export,
     parse_gpa_datapoints,
-    resolve_cross_reference_views,
+    summarize_sync_impact,
     write_updated_gpa,
 )
 from ..config import LICENSING_ENABLED, APP_VERSION, channel_type_display_name
@@ -210,6 +216,9 @@ def run_gui() -> None:
 
     # ── Hauptanwendung ─────────────────────────────────────────────────────────
     class App(BaseCTk):
+        # Verweise-Spalten der Tabelle (klickbar → Verwendungen-Popup).
+        _REF_COLUMNS = ("visu", "logic", "timer")
+
         def __init__(self) -> None:
             super().__init__()
             # Zentrale Schrift-Stufen – direkt nach Tk-Init erstellen.
@@ -244,10 +253,12 @@ def run_gui() -> None:
             }
             self.candidates: List[SyncCandidate] = []
             self.datapoint_name_by_path: Dict[str, str] = {}
-            self.cross_ref_by_path: Dict[str, int] = {}
-            # Offen gehaltener Querverweis-Index der aktuell analysierten GPA-Datei
-            # (beschleunigt Panel-/Popup-Auflösung; wird pro Analyse neu aufgebaut).
-            self._xref_index: Optional[GpaCrossRefIndex] = None
+            # GPA-Verweise (Visu/Logik/Zeitschaltuhr) je Datenpunkt, im Analyse-Worker
+            # vollständig aufgelöst – Tabelle, Filter, Panel, Popup, CSV und
+            # Sync-Prüfung arbeiten nur auf diesen Daten (kein offenes ZIP-Handle).
+            self.references: Dict[str, DatapointReferences] = {}
+            self._ref_search_text: Dict[str, str] = {}
+            self.ref_filter_mode: str = REFERENCE_FILTERS[0]
             # after()-Handle des Verweise-Debounce im Eigenschaften-Panel.
             self._xref_debounce_id: Optional[str] = None
             self.visible_iids: List[str] = []
@@ -260,7 +271,9 @@ def run_gui() -> None:
                 "ga":    "GA",
                 "old":   "Aktueller GPA-Name",
                 "new":   "Neuer GPA-Name aus ETS",
-                "xref":  "Verweise",
+                "visu":  "Visu",
+                "logic": "Logik",
+                "timer": "Uhr",
             }
 
             if LICENSING_ENABLED:
@@ -867,7 +880,7 @@ def run_gui() -> None:
         def _build_center_panel(self, parent) -> None:
             center = self._card(parent, 2)
             center.columnconfigure(0, weight=1)
-            center.rowconfigure(2, weight=1)
+            center.rowconfigure(3, weight=1)
 
             ctk.CTkLabel(center, text="Datenpunkte – Änderungen",
                          font=self._fonts["normal"],
@@ -958,29 +971,53 @@ def run_gui() -> None:
             self.sync_button.grid(row=0, column=4, sticky="e")
             center.bind("<Configure>", self._on_center_resize)
 
+            # Verweise-Filter: Segment-Schalter mit Zählern + Zeilenzähler rechts.
+            fbar = ctk.CTkFrame(center, corner_radius=0, fg_color="transparent")
+            fbar.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 8))
+            fbar.columnconfigure(2, weight=1)
+            self._ref_filter_label = ctk.CTkLabel(
+                fbar, text="GPA-Verweise ⓘ", font=self._fonts["body"],
+                text_color=("gray30", "gray65"))
+            self._ref_filter_label.grid(row=0, column=0, sticky="w", padx=(2, 8))
+            self.ref_filter_seg = ctk.CTkSegmentedButton(
+                fbar, values=list(REFERENCE_FILTERS),
+                font=self._fonts["body"], height=28,
+                fg_color=("gray80", "gray25"),
+                unselected_color=("gray92", "gray25"),
+                unselected_hover_color=("gray84", "gray35"),
+                text_color=("gray10", "gray95"),
+                selected_color=ACCENT, selected_hover_color=ACCENT_DARK,
+                command=self._on_ref_filter_change)
+            self.ref_filter_seg.set(self.ref_filter_mode)
+            self.ref_filter_seg.grid(row=0, column=1, sticky="w")
+            self.table_count_var = tk.StringVar(value="")
+            ctk.CTkLabel(fbar, textvariable=self.table_count_var,
+                         font=self._fonts["body"],
+                         text_color=("gray30", "gray65")).grid(
+                row=0, column=3, sticky="e", padx=(8, 2))
+
             # Tabelle
             table_frame = ctk.CTkFrame(center, corner_radius=0, fg_color="transparent")
-            table_frame.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 10))
+            table_frame.grid(row=3, column=0, sticky="nsew", padx=14, pady=(0, 10))
             table_frame.columnconfigure(0, weight=1)
             table_frame.rowconfigure(0, weight=1)
 
-            cols = ("status", "ga", "old", "new", "xref")
+            cols = ("status", "ga", "old", "new") + self._REF_COLUMNS
             self.tree = ttk.Treeview(table_frame, columns=cols,
                                      show="tree headings", selectmode="extended")
             self._refresh_headings()
             self.tree.column("#0",     width=70,  minwidth=66,  anchor="center", stretch=False)
             self.tree.column("status", width=120, minwidth=100, anchor="w",      stretch=False)
             self.tree.column("ga",     width=100, minwidth=90,  anchor="w",      stretch=False)
-            self.tree.column("old",    width=300, minwidth=180, anchor="w",      stretch=True)
-            self.tree.column("new",    width=320, minwidth=240, anchor="w",      stretch=True)
-            self.tree.column("xref",   width=90,  minwidth=70,  anchor="center", stretch=False)
+            self.tree.column("old",    width=280, minwidth=160, anchor="w",      stretch=True)
+            self.tree.column("new",    width=300, minwidth=200, anchor="w",      stretch=True)
+            for col in self._REF_COLUMNS:
+                self.tree.column(col, width=66, minwidth=56, anchor="center", stretch=False)
             self.tree.grid(row=0, column=0, sticky="nsew")
 
             yscroll = ctk.CTkScrollbar(table_frame, command=self.tree.yview)
             self.tree.configure(yscrollcommand=yscroll.set)
             yscroll.grid(row=0, column=1, sticky="ns")
-
-            self.table_count_var = tk.StringVar(value="")
 
             self.tree.bind("<Button-1>",       self.on_tree_click)
             self.tree.bind("<Motion>",         self._on_tree_motion)
@@ -1009,6 +1046,7 @@ def run_gui() -> None:
         def _build_right_panel(self, parent) -> None:
             right = self._card(parent, 0, column=1, sticky="nsew")
             right.columnconfigure(0, weight=1)
+            right.rowconfigure(1, weight=1)
             right.grid_propagate(False)
             right.configure(width=300)
 
@@ -1047,15 +1085,17 @@ def run_gui() -> None:
             self.detail_new_entry.bind("<KeyRelease>", self.on_detail_new_name_changed)
             self.detail_new_entry.bind("<Return>",     self.on_detail_new_name_changed)
 
-            # Verweise: volle Liste inline (gleiche Auflösung/Optik wie das Popup).
-            # Header zeigt die Anzahl; die Einträge werden bei jedem Zeilenwechsel
-            # in self.detail_xref_frame neu aufgebaut (_populate_detail_xrefs).
+            # Verweise: gegliederte Liste (Visu / Logik / Zeitschaltuhr) in einem
+            # scrollbaren Bereich, der die Resthöhe des Panels füllt. Aufbau bei
+            # jedem Zeilenwechsel (_populate_detail_xrefs), gleiche Optik wie das Popup.
+            form.rowconfigure(12, weight=1)
             self.detail_xref_header = ctk.CTkLabel(
                 form, text="GPA-Verweise", text_color=("gray30", "gray65"),
                 font=self._fonts["property_label"], anchor="w")
             self.detail_xref_header.grid(row=11, column=0, sticky="w", pady=(6, 1))
-            self.detail_xref_frame = ctk.CTkFrame(form, fg_color="transparent")
-            self.detail_xref_frame.grid(row=12, column=0, sticky="ew")
+            self.detail_xref_frame = ctk.CTkScrollableFrame(
+                form, fg_color="transparent", corner_radius=0)
+            self.detail_xref_frame.grid(row=12, column=0, sticky="nsew")
             self.detail_xref_frame.columnconfigure(0, weight=1)
 
         def _build_footer(self) -> None:
@@ -1112,6 +1152,13 @@ def run_gui() -> None:
               "Erstellt eine neue GPA-Datei mit den ausgewählten\nNamens-Änderungen. Die Originaldatei bleibt unverändert.")
             T(self._theme_switch,
               "Design zwischen Hell und Dunkel wechseln.")
+            # CTkSegmentedButton unterstützt kein bind() → Tooltip am Label davor.
+            T(self._ref_filter_label,
+              "Filtert nach Verwendung im GPA-Projekt:\n"
+              "Verwendet – in Visu, Logik oder Zeitschaltuhr\n"
+              "Ungenutzt – nirgends verwendet (Aufräumkandidaten)\n"
+              "In Logik – als Baustein im Logikeditor\n"
+              "Mit Zeitschaltuhr – von einer Zeitschaltuhr geschaltet")
 
         def _setup_drop_targets(self) -> None:
             if not DND_AVAILABLE or not getattr(self, 'TkdndVersion', None):
@@ -1223,9 +1270,10 @@ def run_gui() -> None:
         def _refresh_headings(self) -> None:
             if not hasattr(self, "tree"):
                 return
-            for col in ("#0", "status", "ga", "old", "new", "xref"):
+            for col in ("#0", "status", "ga", "old", "new") + self._REF_COLUMNS:
                 try:
-                    self.tree.heading(col, text=self._heading_text(col), anchor="w",
+                    anchor = "center" if col in self._REF_COLUMNS else "w"
+                    self.tree.heading(col, text=self._heading_text(col), anchor=anchor,
                                       command=lambda c=col: self.sort_by_column(c))
                 except Exception:
                     pass
@@ -1249,10 +1297,9 @@ def run_gui() -> None:
                     return (c.current_name.lower(), c.group_address_value)
                 if column == "new":
                     return (c.new_name.lower(), c.group_address_value)
-                if column == "xref":
-                    # "nicht anwendbar" (kein zip_path) ans Ende schieben (-1).
-                    count = self.cross_ref_by_path.get(c.zip_path, -1) if c.zip_path else -1
-                    return (count, c.current_name.lower())
+                if column in self._REF_COLUMNS:
+                    # "nicht anwendbar" (kein Datenpunkt) ans Ende schieben (-1).
+                    return (self._ref_count(c, column), c.current_name.lower())
                 return (c.group_address_value, c.current_name.lower())
 
             self.candidates.sort(key=key, reverse=self.sort_reverse)
@@ -1284,7 +1331,13 @@ def run_gui() -> None:
                 '• Reine Leerzeichen-Unterschiede werden als „Leerzeichen“ markiert.\n'
                 '• GPA-Adressen ohne Treffer im ETS-Export werden als „Nicht in ETS“ angezeigt.\n'
                 '• Mehrere GPA-Datenpunkte mit identischer Gruppenadresse werden als „Adress-Konflikt“ '
-                'angezeigt und nicht automatisch umbenannt – bitte prüfen.')
+                'angezeigt und nicht automatisch umbenannt – bitte prüfen.\n\n'
+                'GPA-Verweise:\n'
+                'Die Spalten „Visu“, „Logik“ und „Uhr“ zeigen, wo ein Datenpunkt im GPA-Projekt '
+                'verwendet wird: in Visu-Ansichten, als Baustein im Logikeditor oder durch eine '
+                'Zeitschaltuhr. Ein Klick auf eine Zahl öffnet die Details (Standort, Logikseite, '
+                'Schaltzeiten, sichtbar für welche Benutzer). Mit dem Filter „Ungenutzt“ findest '
+                'du Datenpunkte, die nirgends verwendet werden.')
 
         # ── Status / KPIs ──────────────────────────────────────────────────────
 
@@ -1368,14 +1421,14 @@ def run_gui() -> None:
                     datapoints: List[GpaDatapoint] = (
                         parse_gpa_datapoints(gpa, gpa_pwd) if gpa is not None else []
                     )
-                    # Querverweis-Index einmal pro Analyse aufbauen (offene ZIP +
-                    # Namensindex), damit Panel/Popup ohne erneutes ZIP-Öffnen auskommen.
-                    xref_index: Optional[GpaCrossRefIndex] = None
-                    if gpa is not None:
+                    # GPA-Verweise (Visu/Logik/Zeitschaltuhr) aller Datenpunkte einmal
+                    # vollständig auflösen – danach kein offenes ZIP-Handle mehr nötig.
+                    references: Dict[str, DatapointReferences] = {}
+                    if gpa is not None and datapoints:
                         try:
-                            xref_index = GpaCrossRefIndex(gpa, gpa_pwd)
+                            references = build_reference_map(gpa, datapoints, gpa_pwd)
                         except Exception as exc:  # pragma: no cover - defensiv
-                            _log.warning("Querverweis-Index nicht aufgebaut: %s", exc)
+                            _log.warning("GPA-Verweise nicht auflösbar: %s", exc)
                     ets_map: Dict[int, EtsGroupAddress] = {}
                     if ets is not None:
                         try:
@@ -1407,7 +1460,7 @@ def run_gui() -> None:
                     candidates.sort(key=lambda c: (
                         c.group_address_value, c.group_address, c.current_name.lower()))
                     self.after(0, lambda: self._analyze_done(
-                        datapoints, ets_map, candidates, xref_index))
+                        datapoints, ets_map, candidates, references))
                 except Exception as exc:
                     self.after(0, lambda e=exc: self._analyze_error(e))
 
@@ -1420,29 +1473,34 @@ def run_gui() -> None:
         def _analyze_done(self, datapoints: List[GpaDatapoint],
                           ets_map: Dict[int, EtsGroupAddress],
                           candidates: List[SyncCandidate],
-                          xref_index: Optional[GpaCrossRefIndex] = None) -> None:
+                          references: Optional[Dict[str, DatapointReferences]] = None) -> None:
             _log.info("Analyse abgeschlossen: %d Datenpunkte, %d ETS-GAs, %d Kandidaten",
                       len(datapoints), len(ets_map), len(candidates))
-            # Alten Index schließen, neuen übernehmen (gültig bis zur nächsten Analyse).
-            if self._xref_index is not None:
-                self._xref_index.close()
-            self._xref_index = xref_index
             self.candidates = candidates
             self.datapoint_name_by_path = {dp.zip_path: dp.entity_name for dp in datapoints}
-            self.cross_ref_by_path = {dp.zip_path: dp.cross_reference_count for dp in datapoints}
+            self.references = references or {}
+            # Suchtext je Datenpunkt: Ansichten, Standorte, Logikseiten, Zeitschaltuhren.
+            self._ref_search_text = {
+                path: refs.summary_text().lower() for path, refs in self.references.items()}
             self.sort_column = "ga"
             self.sort_reverse = False
             self._set_busy(False)
+            self._update_ref_filter_labels()
             self.refresh_tree()
             self._update_summary(len(datapoints), len(ets_map))
+            unused = sum(1 for r in self.references.values() if r.is_unused)
+            in_logic = sum(1 for r in self.references.values() if r.logic)
+            ref_info = (f" GPA-Verweise: {in_logic} in Logik, {unused} ungenutzt."
+                        if self.references else "")
             if datapoints and ets_map:
                 self.status_var.set(
                     f"Analyse fertig: {len(datapoints)} GPA-Datenpunkte, "
-                    f"{len(ets_map)} ETS-Gruppenadressen, {len(candidates)} Unterschiede gefunden.")
+                    f"{len(ets_map)} ETS-Gruppenadressen, {len(candidates)} Unterschiede gefunden."
+                    + ref_info)
             elif datapoints:
                 self.status_var.set(
-                    f"GPA analysiert: {len(datapoints)} GPA-Datenpunkte gefunden und in der Liste angezeigt. "
-                    "Für Unterschiede zusätzlich eine ETS-XML auswählen.")
+                    f"GPA analysiert: {len(datapoints)} GPA-Datenpunkte gefunden und in der Liste angezeigt."
+                    + ref_info + " Für Unterschiede zusätzlich eine ETS-XML auswählen.")
             else:
                 self.status_var.set(
                     f"ETS-XML analysiert: {len(ets_map)} ETS-Gruppenadressen gefunden und in der Liste angezeigt. "
@@ -1461,11 +1519,66 @@ def run_gui() -> None:
             self.filter_var.set("")
 
         def _row_matches_filter(self, c: SyncCandidate, needle: str) -> bool:
+            if not matches_reference_filter(self._refs_for(c), self.ref_filter_mode):
+                return False
             if not needle:
                 return True
             haystack = " | ".join([c.status, c.group_address, c.source_field,
-                                    c.current_name, c.new_name, c.zip_path]).lower()
+                                    c.current_name, c.new_name, c.zip_path,
+                                    self._ref_search_text.get(c.zip_path, "")]).lower()
             return needle in haystack
+
+        # ── GPA-Verweise: Hilfen ──────────────────────────────────────────────
+
+        def _refs_for(self, c: SyncCandidate) -> Optional[DatapointReferences]:
+            """Verweise einer Zeile, oder None wenn die Zeile keinen GPA-Datenpunkt hat."""
+            if not c.zip_path:
+                return None
+            return self.references.get(c.zip_path)
+
+        def _ref_count(self, c: SyncCandidate, column: str) -> int:
+            """Anzahl Verweise für eine Verweise-Spalte; -1 = nicht anwendbar."""
+            refs = self._refs_for(c)
+            if refs is None:
+                return -1
+            return {"visu": len(refs.visu), "logic": len(refs.logic),
+                    "timer": len(refs.timers)}.get(column, -1)
+
+        def _ref_cell_text(self, c: SyncCandidate, column: str) -> str:
+            count = self._ref_count(c, column)
+            if count < 0:
+                return ""
+            return self._as_link_text(str(count)) if count else "–"
+
+        def _update_ref_filter_labels(self) -> None:
+            """Beschriftet die Filter-Segmente mit der Trefferzahl, z. B. 'Ungenutzt (7)'."""
+            if not hasattr(self, "ref_filter_seg"):
+                return
+            rows = [self._refs_for(c) for c in self.candidates]
+            self._ref_filter_labels: Dict[str, str] = {}
+            for mode in REFERENCE_FILTERS:
+                if mode == REFERENCE_FILTERS[0] or not self.references:
+                    label = mode
+                else:
+                    hits = sum(1 for r in rows if matches_reference_filter(r, mode))
+                    label = f"{mode} ({hits})"
+                self._ref_filter_labels[label] = mode
+            labels = list(self._ref_filter_labels)
+            self.ref_filter_seg.configure(values=labels)
+            current = next((lbl for lbl, m in self._ref_filter_labels.items()
+                            if m == self.ref_filter_mode), labels[0])
+            self.ref_filter_seg.set(current)
+
+        def _on_ref_filter_change(self, label: str) -> None:
+            labels = getattr(self, "_ref_filter_labels", {})
+            self.ref_filter_mode = labels.get(label, label if label in REFERENCE_FILTERS
+                                              else REFERENCE_FILTERS[0])
+            self.refresh_tree()
+            if self.ref_filter_mode != REFERENCE_FILTERS[0] and self.ets_var.get().strip():
+                # Im ETS-Vergleich listet die Tabelle nur Unterschiede – darauf hinweisen.
+                self.status_var.set(
+                    "Hinweis: Mit ETS-Datei zeigt die Tabelle nur Unterschiede. "
+                    "Für die Verweise aller Datenpunkte nur das GPA-Projekt analysieren.")
 
         # ── Tabelle ────────────────────────────────────────────────────────────
 
@@ -1492,19 +1605,13 @@ def run_gui() -> None:
                 if c.status == SyncStatus.ADRESSKONFLIKT:
                     mark = "!"
                     tags.append("conflict")
-                # Verweise: nur für Zeilen mit echtem Datenpunkt (zip_path) anwendbar.
-                if c.zip_path:
-                    xref = self.cross_ref_by_path.get(c.zip_path, 0)
-                    # "N ↗" als Link-Optik (ttk.Treeview erlaubt keine zellgenaue
-                    # Schrift/Farbe) – kombiniert mit hand2-Cursor. 0-Verweise werden
-                    # bewusst NICHT mehr farblich hervorgehoben (kein "no_xref"-Tag),
-                    # damit Projekte mit vielen unbenutzten Datenpunkten ruhig bleiben.
-                    xref_text = self._as_link_text(str(xref))
-                else:
-                    xref_text = ""
+                # Verweise: "N ↗" als Link-Optik (ttk.Treeview erlaubt keine
+                # zellgenaue Schrift/Farbe) plus hand2-Cursor; 0 → "–", ohne
+                # Datenpunkt leer. Keine Zeilenfärbung für ungenutzte Datenpunkte.
+                ref_texts = tuple(self._ref_cell_text(c, col) for col in self._REF_COLUMNS)
                 self.tree.insert("", "end", iid=iid, text=mark,
                                  values=(c.status, c.group_address, c.current_name,
-                                         c.new_name, xref_text),
+                                         c.new_name) + ref_texts,
                                  tags=tuple(tags))
                 self.visible_iids.append(iid)
                 visible_counter += 1
@@ -1548,12 +1655,15 @@ def run_gui() -> None:
                         self.tree.selection_set(row)
                         self.tree.focus(row)
                     return "break"
-            if region == "cell" and row and self._is_column(column, "xref"):
+            if region == "cell" and row and self._is_ref_column(column):
                 c = self.candidates[int(row)]
-                if c.zip_path:
+                if self._refs_for(c) is not None:
                     self._open_xref_popup(c)
                     return "break"
             return None
+
+        def _is_ref_column(self, identify_result: str) -> bool:
+            return any(self._is_column(identify_result, col) for col in self._REF_COLUMNS)
 
         @staticmethod
         def _as_link_text(text: str) -> str:
@@ -1570,7 +1680,7 @@ def run_gui() -> None:
         def _is_xref_link_row(self, row: str) -> bool:
             """True, wenn die Verweise-Zelle dieser Zeile klickbar ist (Datenpunkt vorhanden)."""
             try:
-                return bool(self.candidates[int(row)].zip_path)
+                return self._refs_for(self.candidates[int(row)]) is not None
             except (ValueError, IndexError):
                 return False
 
@@ -1581,7 +1691,7 @@ def run_gui() -> None:
             row    = self.tree.identify_row(event.y)
             over_link = (
                 region == "cell" and bool(row)
-                and self._is_column(column, "xref")
+                and self._is_ref_column(column)
                 and self._is_xref_link_row(row)
             )
             cursor = "hand2" if over_link else ""
@@ -1710,15 +1820,18 @@ def run_gui() -> None:
 
         def _clipboard_rows(self, iids: Sequence[str]) -> List[List[str]]:
             rows: List[List[str]] = [
-                ["Sync", "Status", "GA", "Aktueller GPA-Name", "Neuer GPA-Name aus ETS", "Datei im GPA"]]
+                ["Sync", "Status", "GA", "Aktueller GPA-Name", "Neuer GPA-Name aus ETS",
+                 "Visu", "Logik", "Zeitschaltuhr", "Datei im GPA"]]
             for iid in iids:
                 try:
                     c = self.candidates[int(iid)]
                 except (IndexError, ValueError):
                     continue
+                counts = [str(n) if n >= 0 else ""
+                          for n in (self._ref_count(c, col) for col in self._REF_COLUMNS)]
                 rows.append(["ja" if c.selected else "nein",
                               c.status, c.group_address,
-                              c.current_name, c.new_name, c.zip_path])
+                              c.current_name, c.new_name, *counts, c.zip_path])
             return rows
 
         def _selected_iids_in_display_order(self) -> List[str]:
@@ -1804,178 +1917,234 @@ def run_gui() -> None:
             self._xref_debounce_id = self.after(
                 50, lambda: self._populate_detail_xrefs(candidate))
 
-        def _render_xref_entry(self, parent, row: int, view, *,
-                               wraplength_main: int, wraplength_sub: int,
-                               sub_font_key: str = "small",
-                               show_channel_id: bool = True):
-            """Rendert einen Verweis-Eintrag (Breadcrumb + Kanaltyp) in parent.
+        # ── GPA-Verweise: Darstellung (Panel + Popup) ──────────────────────────
 
-            Gemeinsam genutzt von Popup und Eigenschaften-Panel, damit Optik und
-            Format weitgehend identisch bleiben (keine doppelte Logik). view ist das
-            4-Tupel (EntityName, ChannelTypeId, FunctionType, LocationPath) aus
-            resolve_cross_reference_views.
+        _ROLE_TEXT = {
+            "Eingang": ("Eingang – Logik reagiert auf diesen Datenpunkt", "Eingang (Logik reagiert)"),
+            "Ausgang": ("Ausgang – Logik sendet auf diesen Datenpunkt", "Ausgang (Logik sendet)"),
+        }
 
-            sub_font_key/show_channel_id steuern die Zeile-2-Darstellung:
-            - Popup: kleine Schrift, mit technischer ID "(<ChannelTypeId>)".
-            - Panel: eine Stufe größere Schrift, ohne technische ID (nur wenn kein
-              übersetzter Name existiert, bleibt die ID als Fallback sichtbar).
-            """
-            entity, channel_type, function_type, location = view
-            # Zeile 1: Breadcrumb, der mit der Kachel (Channelview) endet. Das
-            # "(Raum)"/"(Etage)"-Suffix am letzten Location-Segment wird entfernt;
-            # ohne auflösbaren Standort nur der Channelview-Name.
-            loc_path = re.sub(r"\s*\([^()]*\)\s*$", "", location).strip() if location else ""
-            breadcrumb = f"{loc_path} → {entity}" if loc_path else entity
+        def _render_entry(self, parent, row: int, main: str, subs: Sequence[str], *,
+                          wrap: int, compact: bool, warn: bool = False) -> None:
+            """Ein Verweis-Eintrag: Hauptzeile mit Punkt, darunter gedämpfte Nebenzeilen."""
             entry = ctk.CTkFrame(parent, fg_color="transparent")
-            entry.grid(row=row, column=0, sticky="ew", padx=6, pady=(2, 6))
+            entry.grid(row=row, column=0, sticky="ew", padx=6, pady=(1, 6))
             entry.columnconfigure(0, weight=1)
-            ctk.CTkLabel(entry, text=f"•  {breadcrumb}",
-                         font=self._fonts["body"], justify="left",
-                         anchor="w", wraplength=wraplength_main).grid(
+            ctk.CTkLabel(entry, text=f"•  {main}", font=self._fonts["body"],
+                         justify="left", anchor="w", wraplength=wrap,
+                         text_color=("#b45309", "#fbbf24") if warn else None).grid(
                 row=0, column=0, sticky="ew")
-            # Zeile 2: Kanaltyp als gedämpfte Nebeninfo. Deutscher Name aus dem
-            # (Function.Type, ChannelType)-Lookup. Ohne Treffer Fallback auf die
-            # technische ID, damit die Zeile nie leer bleibt.
-            if channel_type:
-                german = channel_type_display_name(function_type, channel_type)
+            # Nebenzeilen per padx eingerückt (nicht per Leerzeichen), damit auch
+            # umbrochene Zeilen bündig bleiben.
+            for i, sub in enumerate(s for s in subs if s):
+                ctk.CTkLabel(entry, text=sub, font=self._fonts["table_body"], justify="left",
+                             text_color=("gray30", "gray70"), anchor="w", height=18,
+                             wraplength=max(120, wrap - 24)).grid(
+                    row=i + 1, column=0, sticky="ew", padx=(18, 0))
+
+        def _render_visu_entry(self, parent, row: int, ref: VisuReference, *,
+                               wrap: int, compact: bool) -> None:
+            if ref.orphan:
+                self._render_entry(parent, row, "unbekannte Ansicht",
+                                   ["Verweis zeigt auf eine nicht vorhandene Ansicht"],
+                                   wrap=wrap, compact=compact, warn=True)
+                return
+            # Breadcrumb endet mit der Kachel; "(Raum)"-Suffix des letzten Standorts
+            # entfällt, im Panel zusätzlich der immer gleiche Wurzelknoten.
+            loc = re.sub(r"\s*\([^()]*\)\s*$", "", ref.location).strip() if ref.location else ""
+            if compact:
+                loc = re.sub(r"^Gebäude und Geräte\s*→\s*", "", loc)
+            main = f"{loc} → {ref.view_name}" if loc else ref.view_name
+            subs: List[str] = []
+            if ref.channel_type:
+                german = channel_type_display_name(ref.function_type, ref.channel_type)
                 if german:
-                    type_text = f"{german} ({channel_type})" if show_channel_id else german
+                    subs.append(german if compact else f"{german} ({ref.channel_type})")
                 else:
-                    type_text = channel_type
-                ctk.CTkLabel(entry, text=f"      {type_text}",
-                             font=self._fonts[sub_font_key], justify="left",
-                             text_color=("gray30", "gray70"),
-                             anchor="w", wraplength=wraplength_sub).grid(
-                    row=1, column=0, sticky="ew")
-            return entry
+                    subs.append(ref.channel_type)
+            if ref.users:
+                subs.append("👤 " + ", ".join(ref.users))
+            self._render_entry(parent, row, main, subs, wrap=wrap, compact=compact)
+
+        def _render_logic_entry(self, parent, row: int, ref: LogicReference, *,
+                                wrap: int, compact: bool) -> None:
+            long_text, short_text = self._ROLE_TEXT.get(ref.role, (ref.role, ref.role))
+            subs = [short_text if compact else long_text]
+            if ref.node_name and not compact:
+                subs.append(f"Baustein-Beschriftung: {ref.node_name}")
+            if not ref.page_active:
+                subs.append("⚠ Logikseite ist deaktiviert")
+            self._render_entry(parent, row, f"Logikseite „{ref.page_name}“", subs,
+                               wrap=wrap, compact=compact)
+
+        def _render_timer_entry(self, parent, row: int, ref: TimerReference, *,
+                                wrap: int, compact: bool) -> None:
+            if ref.schedules:
+                limit = 3 if compact else 8
+                times = ", ".join(ref.schedules[:limit])
+                if len(ref.schedules) > limit:
+                    times += f" … (+{len(ref.schedules) - limit})"
+                subs = [f"Schaltzeiten: {times}",
+                        f"{ref.active_count} von {len(ref.schedules)} aktiv"]
+            else:
+                subs = ["keine Schaltzeiten hinterlegt"]
+            self._render_entry(parent, row, f"Ansicht „{ref.view_name}“", subs,
+                               wrap=wrap, compact=compact)
+
+        def _render_reference_sections(self, parent, refs: DatapointReferences, *,
+                                       wrap: int, compact: bool,
+                                       per_section_limit: Optional[int] = None) -> int:
+            """Rendert die Abschnitte Visualisierung / Logik / Zeitschaltuhr.
+
+            Gemeinsam genutzt von Eigenschaften-Panel (compact) und Popup, damit
+            Optik und Format identisch bleiben. Rückgabe: nächste freie grid-Zeile.
+            """
+            row = 0
+            sections = (
+                ("🖥", "Visualisierung", refs.visu, self._render_visu_entry),
+                ("⚙", "Logik", refs.logic, self._render_logic_entry),
+                ("⏰", "Zeitschaltuhr", refs.timers, self._render_timer_entry),
+            )
+            for icon, title, items, render in sections:
+                if not items:
+                    continue
+                ctk.CTkLabel(parent, text=f"{icon}  {title} ({len(items)})",
+                             font=self._fonts["body_bold"],
+                             text_color=(ACCENT_DARK, ACCENT), anchor="w").grid(
+                    row=row, column=0, sticky="ew", padx=4, pady=(10 if row else 2, 2))
+                row += 1
+                shown = items if per_section_limit is None else items[:per_section_limit]
+                for item in shown:
+                    render(parent, row, item, wrap=wrap, compact=compact)
+                    row += 1
+                if len(items) > len(shown):
+                    ctk.CTkLabel(parent,
+                                 text=f"+{len(items) - len(shown)} weitere – vollständige "
+                                      "Liste per Klick auf die Zahl in der Tabelle",
+                                 font=self._fonts["small"], justify="left",
+                                 text_color=("gray30", "gray70"), anchor="w",
+                                 wraplength=wrap).grid(
+                        row=row, column=0, sticky="ew", padx=10, pady=(0, 4))
+                    row += 1
+            return row
+
+        @staticmethod
+        def _references_as_text(candidate: SyncCandidate, refs: DatapointReferences) -> str:
+            """Mehrzeiliger Klartext der Verwendungen (für die Zwischenablage)."""
+            lines = [f"Datenpunkt: {candidate.current_name} ({candidate.group_address})"]
+            if refs.is_unused:
+                lines.append("Keine Verwendung in Visu, Logik oder Zeitschaltuhr.")
+            for v in refs.visu:
+                where = f"{v.location} → {v.view_name}" if v.location else v.view_name
+                users = f" [sichtbar für: {', '.join(v.users)}]" if v.users else ""
+                lines.append(f"Visu: {where}{users}")
+            for lg in refs.logic:
+                state = "" if lg.page_active else " [Seite deaktiviert]"
+                lines.append(f"Logik: {lg.page_name} – {lg.role}"
+                             f"{' – ' + lg.node_name if lg.node_name else ''}{state}")
+            for t in refs.timers:
+                times = ", ".join(t.schedules) if t.schedules else "keine Schaltzeiten"
+                lines.append(f"Zeitschaltuhr: {t.view_name} – {times}")
+            return "\n".join(lines)
 
         def _populate_detail_xrefs(self, candidate: Optional[SyncCandidate]) -> None:
-            """Baut die Verweise-Liste im Eigenschaften-Panel bei jedem Zeilenwechsel neu auf.
+            """Baut die Verweise im Eigenschaften-Panel bei jedem Zeilenwechsel neu auf.
 
-            Nutzt dieselbe Auflösung wie das Popup (resolve_cross_reference_views).
-            - kein Datenpunkt/zip_path: "-"
-            - 0 Verweise (oder nicht auflösbar): "Keine Verwendung gefunden"
-            - sonst: volle Liste im gleichen Format wie das Popup.
-            Das Popup (Tabellenklick) bleibt davon unberührt.
+            - kein GPA-Datenpunkt: "-"
+            - keine Verwendung: Hinweis "nirgends verwendet"
+            - sonst: gegliederte Liste (Visualisierung / Logik / Zeitschaltuhr).
             """
             if not hasattr(self, "detail_xref_frame"):
                 return
             for child in self.detail_xref_frame.winfo_children():
                 child.destroy()
+            try:
+                self.detail_xref_frame._parent_canvas.yview_moveto(0)
+            except Exception:  # pragma: no cover - interne CTk-API, rein kosmetisch
+                pass
 
             def _muted(text: str) -> None:
                 ctk.CTkLabel(self.detail_xref_frame, text=text,
-                             font=self._fonts["small"], justify="left",
+                             font=self._fonts["body"], justify="left",
                              text_color=("gray30", "gray70"),
-                             anchor="w", wraplength=250).grid(
+                             anchor="w", wraplength=235).grid(
                     row=0, column=0, sticky="ew", padx=6, pady=(2, 4))
 
-            if candidate is None or not candidate.zip_path:
+            refs = self._refs_for(candidate) if candidate is not None else None
+            if refs is None:
                 self.detail_xref_header.configure(text="GPA-Verweise")
                 _muted("-")
                 return
-
-            gpa_text = self.gpa_var.get().strip()
-            views: List = []
-            if gpa_text:
-                try:
-                    views = resolve_cross_reference_views(
-                        Path(gpa_text), candidate.zip_path, self._pwd(),
-                        index=self._xref_index)
-                except Exception as exc:  # pragma: no cover - defensiv
-                    _log.warning("Verweise (Panel) nicht auflösbar: %s", exc)
-                    self.detail_xref_header.configure(text="GPA-Verweise")
-                    _muted("Auflösung fehlgeschlagen")
-                    return
-
-            if not views:
-                self.detail_xref_header.configure(text="GPA-Verweise")
-                _muted("Keine Verwendung gefunden")
+            self.detail_xref_header.configure(text=f"GPA-Verweise ({refs.total})")
+            if refs.is_unused:
+                _muted("Nirgends verwendet – weder in einer Visu-Ansicht, "
+                       "in der Logik noch in einer Zeitschaltuhr.")
                 return
-
-            self.detail_xref_header.configure(text=f"GPA-Verweise ({len(views)})")
-            # Harte Obergrenze als Absicherung gegen den seltenen Ausnahmefall mit
-            # sehr vielen Verweisen (kein Scroll-Mechanismus). Der Normalfall (1–2)
-            # ist davon nicht betroffen; die vollständige Liste steht im Popup.
-            max_shown = 15
-            shown = views[:max_shown]
-            for i, view in enumerate(shown):
-                self._render_xref_entry(self.detail_xref_frame, i, view,
-                                        wraplength_main=250, wraplength_sub=245,
-                                        sub_font_key="table_body",
-                                        show_channel_id=False)
-            if len(views) > max_shown:
-                extra = len(views) - max_shown
-                ctk.CTkLabel(
-                    self.detail_xref_frame,
-                    text=f"+{extra} weitere — vollständige Liste im Popup "
-                         "(Klick auf die Verweise-Zahl in der Tabelle)",
-                    font=self._fonts["small"], justify="left",
-                    text_color=("gray30", "gray70"),
-                    anchor="w", wraplength=250).grid(
-                    row=len(shown), column=0, sticky="ew", padx=6, pady=(4, 4))
+            self._render_reference_sections(self.detail_xref_frame, refs,
+                                            wrap=235, compact=True, per_section_limit=10)
 
         # ── Querverweise-Popup ─────────────────────────────────────────────────
 
         def _open_xref_popup(self, candidate: SyncCandidate) -> None:
-            """Zeigt die Channelviews, in denen der Datenpunkt verwendet wird."""
-            count = self.cross_ref_by_path.get(candidate.zip_path, 0)
-            gpa_text = self.gpa_var.get().strip()
-            views: List = []
-            error: Optional[str] = None
-            if count and gpa_text:
-                try:
-                    views = resolve_cross_reference_views(
-                        Path(gpa_text), candidate.zip_path, self._pwd(),
-                        index=self._xref_index)
-                except Exception as exc:  # pragma: no cover - defensiv
-                    _log.warning("Querverweise konnten nicht aufgelöst werden: %s", exc)
-                    error = str(exc)
+            """Zeigt alle Verwendungen des Datenpunkts (Visu, Logik, Zeitschaltuhr)."""
+            refs = self._refs_for(candidate) or DatapointReferences()
 
             dialog = ctk.CTkToplevel(self)
-            dialog.title("Verweise")
-            dialog.geometry("460x420")
+            dialog.title("Verwendungen im GPA-Projekt")
+            dialog.geometry("600x560")
+            dialog.minsize(420, 320)
             dialog.transient(self)
             dialog.columnconfigure(0, weight=1)
-            dialog.rowconfigure(2, weight=1)
+            dialog.rowconfigure(3, weight=1)
 
-            ctk.CTkLabel(dialog, text="🔗  Verwendungen",
+            ctk.CTkLabel(dialog, text="🔗  Verwendungen im GPA-Projekt",
                          font=self._fonts["normal"]).grid(
                 row=0, column=0, padx=20, pady=(18, 4), sticky="w")
-
-            ctk.CTkLabel(dialog,
-                         text=f"Datenpunkt: {candidate.current_name}",
+            ga = f"  ·  GA {candidate.group_address}" if candidate.group_address else ""
+            ctk.CTkLabel(dialog, text=f"Datenpunkt: {candidate.current_name}{ga}",
                          font=self._fonts["body"], justify="left",
-                         text_color=("gray30", "gray70"), wraplength=410).grid(
-                row=1, column=0, padx=20, pady=(0, 8), sticky="w")
+                         text_color=("gray30", "gray70"), wraplength=550).grid(
+                row=1, column=0, padx=20, pady=(0, 2), sticky="w")
+            ctk.CTkLabel(dialog,
+                         text=f"{len(refs.visu)} Visu  ·  {len(refs.logic)} Logik  ·  "
+                              f"{len(refs.timers)} Zeitschaltuhr",
+                         font=self._fonts["body_bold"], anchor="w").grid(
+                row=2, column=0, padx=20, pady=(0, 8), sticky="w")
 
             body = ctk.CTkScrollableFrame(dialog, fg_color="transparent")
-            body.grid(row=2, column=0, padx=14, pady=(0, 8), sticky="nsew")
+            body.grid(row=3, column=0, padx=14, pady=(0, 8), sticky="nsew")
             body.columnconfigure(0, weight=1)
 
-            if error is not None:
+            if refs.is_unused:
                 ctk.CTkLabel(body,
-                             text=f"⚠  Auflösung fehlgeschlagen:\n{error}",
+                             text="Keine Verwendung gefunden.\n\n"
+                                  "Der Datenpunkt wird weder in einer Visu-Ansicht noch in der "
+                                  "Logik oder von einer Zeitschaltuhr verwendet und ist "
+                                  "vermutlich aufräumbar. Vor dem Löschen bitte im GPA prüfen.",
                              font=self._fonts["body"], justify="left",
-                             text_color=("#7a4000", "#ffb84d"), wraplength=400).grid(
-                    row=0, column=0, sticky="w", padx=6, pady=6)
-            elif not views:
-                ctk.CTkLabel(body,
-                             text="Keine Verwendung gefunden.\n"
-                                  "Der Datenpunkt wird in keiner Visualisierung angezeigt "
-                                  "und ist evtl. lösch-/aufräumbar.",
-                             font=self._fonts["body"], justify="left",
-                             wraplength=400).grid(
-                    row=0, column=0, sticky="w", padx=6, pady=6)
+                             wraplength=520).grid(row=0, column=0, sticky="w", padx=6, pady=6)
             else:
-                for i, view in enumerate(views):
-                    self._render_xref_entry(body, i, view,
-                                            wraplength_main=400, wraplength_sub=390)
+                self._render_reference_sections(body, refs, wrap=520, compact=False)
 
-            ok_btn = ctk.CTkButton(dialog, text="Schließen", fg_color=ACCENT,
+            buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+            buttons.grid(row=4, column=0, padx=20, pady=(0, 18), sticky="ew")
+            buttons.columnconfigure(0, weight=1)
+
+            def _copy() -> None:
+                self.clipboard_clear()
+                self.clipboard_append(self._references_as_text(candidate, refs))
+                self.status_var.set(f"Verwendungen von „{candidate.current_name}“ kopiert.")
+
+            ctk.CTkButton(buttons, text="In Zwischenablage kopieren", width=200,
+                          fg_color="transparent", border_width=1,
+                          border_color=("gray60", "gray45"),
+                          text_color=("gray15", "gray85"),
+                          hover_color=("gray85", "gray25"),
+                          command=_copy).grid(row=0, column=0, sticky="w")
+            ok_btn = ctk.CTkButton(buttons, text="Schließen", fg_color=ACCENT,
                                    hover_color=ACCENT_DARK, text_color="white",
                                    command=dialog.destroy)
-            ok_btn.grid(row=3, column=0, padx=20, pady=(0, 18), sticky="e")
+            ok_btn.grid(row=0, column=1, sticky="e")
 
             dialog.bind("<Return>", lambda _e: dialog.destroy())
             dialog.bind("<Escape>", lambda _e: dialog.destroy())
@@ -1986,6 +2155,123 @@ def run_gui() -> None:
             dialog.geometry(f"+{x}+{y}")
             dialog.after(100, dialog.grab_set)
             dialog.after(120, ok_btn.focus_set)
+
+        # ── Sync-Auswirkung ────────────────────────────────────────────────────
+
+        def _confirm_sync_impact(self, selected: Sequence[SyncCandidate]) -> bool:
+            """Zeigt vor dem Speichern, wo die Umbenennungen im GPA-Projekt wirken.
+
+            Rückgabe True = weiter, False = abgebrochen.
+            """
+            impact = summarize_sync_impact(selected, self.references)
+            result = {"ok": False}
+
+            dialog = ctk.CTkToplevel(self)
+            dialog.title("Synchronisation prüfen")
+            dialog.geometry("640x600")
+            dialog.minsize(480, 380)
+            dialog.transient(self)
+            dialog.columnconfigure(0, weight=1)
+            dialog.rowconfigure(4, weight=1)
+
+            ctk.CTkLabel(dialog, text="Auswirkung der Umbenennung",
+                         font=self._fonts["normal"]).grid(
+                row=0, column=0, padx=22, pady=(18, 4), sticky="w")
+            renamed_text = ("1 Datenpunkt wird umbenannt." if impact.renamed == 1
+                            else f"{impact.renamed} Datenpunkte werden umbenannt.")
+            ctk.CTkLabel(dialog, text=renamed_text,
+                         font=self._fonts["body_bold"], anchor="w").grid(
+                row=1, column=0, padx=22, pady=(0, 6), sticky="w")
+
+            stats = ctk.CTkFrame(dialog, corner_radius=8, border_width=1,
+                                 border_color=("gray78", "gray28"))
+            stats.grid(row=2, column=0, padx=20, pady=(0, 8), sticky="ew")
+            stats.columnconfigure((0, 1), weight=1, uniform="stat")
+            def _n(count: int, one: str, many: str) -> str:
+                return f"{count} {one if count == 1 else many}"
+
+            stat_defs = [
+                ("🖥", f"{impact.in_visu} in Visu-Ansichten",
+                 _n(len(impact.views), "Ansicht betroffen", "Ansichten betroffen")),
+                ("⚙", f"{impact.in_logic} in der Logik",
+                 _n(len(impact.logic_pages), "Logikseite betroffen", "Logikseiten betroffen")),
+                ("⏰", f"{impact.in_timers} mit Zeitschaltuhr", ""),
+                ("○", f"{impact.unused} nirgends verwendet", ""),
+            ]
+            for i, (icon, main, sub) in enumerate(stat_defs):
+                cell = ctk.CTkFrame(stats, fg_color="transparent")
+                cell.grid(row=i // 2, column=i % 2, sticky="ew", padx=12, pady=6)
+                ctk.CTkLabel(cell, text=f"{icon}  {main}", font=self._fonts["body"],
+                             anchor="w").grid(row=0, column=0, sticky="w")
+                if sub:
+                    ctk.CTkLabel(cell, text=sub, font=self._fonts["table_body"],
+                                 text_color=("gray30", "gray70"), anchor="w").grid(
+                        row=1, column=0, sticky="w", padx=(26, 0))
+
+            ctk.CTkLabel(dialog,
+                         text="Umbenannt wird nur der Datenpunktname. Ansichten, Logikseiten "
+                              "und Baustein-Beschriftungen behalten ihre eigenen Namen.",
+                         font=self._fonts["table_body"], justify="left", wraplength=590,
+                         text_color=("gray30", "gray70")).grid(
+                row=3, column=0, padx=22, pady=(0, 6), sticky="w")
+
+            body = ctk.CTkScrollableFrame(dialog, fg_color="transparent")
+            body.grid(row=4, column=0, padx=14, pady=(0, 8), sticky="nsew")
+            body.columnconfigure(0, weight=1)
+            limit = 300
+            for i, (c, refs) in enumerate(impact.rows[:limit]):
+                if refs is None:
+                    where = ""
+                elif refs.is_unused:
+                    where = "nicht verwendet"
+                else:
+                    parts = []
+                    if refs.visu:
+                        parts.append(f"Visu: {', '.join(v.view_name for v in refs.visu[:3])}"
+                                     + (" …" if len(refs.visu) > 3 else ""))
+                    if refs.logic:
+                        pages = list(dict.fromkeys(lg.page_name for lg in refs.logic))
+                        parts.append(f"Logik: {', '.join(pages[:3])}"
+                                     + (" …" if len(pages) > 3 else ""))
+                    if refs.timers:
+                        parts.append(f"Zeitschaltuhr: {len(refs.timers)}")
+                    where = "  ·  ".join(parts)
+                self._render_entry(body, i, f"{c.current_name}  →  {c.new_name}",
+                                   [where], wrap=560, compact=False)
+            if len(impact.rows) > limit:
+                ctk.CTkLabel(body, text=f"+{len(impact.rows) - limit} weitere",
+                             font=self._fonts["small"], anchor="w").grid(
+                    row=limit, column=0, sticky="w", padx=10)
+
+            buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+            buttons.grid(row=5, column=0, padx=20, pady=(0, 18), sticky="ew")
+            buttons.columnconfigure(0, weight=1)
+
+            def _ok() -> None:
+                result["ok"] = True
+                dialog.destroy()
+
+            ctk.CTkButton(buttons, text="Abbrechen", width=120,
+                          fg_color="transparent", border_width=1,
+                          border_color=("gray60", "gray45"),
+                          text_color=("gray15", "gray85"),
+                          hover_color=("gray85", "gray25"),
+                          command=dialog.destroy).grid(row=0, column=1, sticky="e", padx=(0, 8))
+            ok_btn = ctk.CTkButton(buttons, text="Weiter zum Speichern", width=180,
+                                   fg_color=ACCENT, hover_color=ACCENT_DARK,
+                                   text_color="white", command=_ok)
+            ok_btn.grid(row=0, column=2, sticky="e")
+
+            dialog.bind("<Return>", lambda _e: _ok())
+            dialog.bind("<Escape>", lambda _e: dialog.destroy())
+            dialog.update_idletasks()
+            x = self.winfo_x() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
+            y = self.winfo_y() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+            dialog.after(100, dialog.grab_set)
+            dialog.after(120, ok_btn.focus_set)
+            self.wait_window(dialog)
+            return result["ok"]
 
         # ── CSV-Export ─────────────────────────────────────────────────────────
 
@@ -2001,7 +2287,8 @@ def run_gui() -> None:
             if not path:
                 return
             try:
-                export_candidates_csv(self.candidates, Path(path))
+                export_candidates_csv(self.candidates, Path(path),
+                                      references=self.references or None)
                 self.status_var.set(f"CSV gespeichert: {path}")
             except Exception as e:
                 self._center_dialog("Fehler beim CSV-Export")
@@ -2046,6 +2333,9 @@ def run_gui() -> None:
                         if c.selected and c.status in (SyncStatus.AENDERUNG, SyncStatus.LEERZEICHEN)]
             if not self._validate_selected_names():
                 return
+            if not self._confirm_sync_impact(selected):
+                self.status_var.set("Synchronisierung abgebrochen.")
+                return
             input_gpa = Path(self.gpa_var.get())
             out = filedialog.asksaveasfilename(
                 defaultextension=".gpa",
@@ -2056,14 +2346,6 @@ def run_gui() -> None:
             if not self._ensure_password_if_needed(input_gpa):
                 self.status_var.set("Synchronisierung abgebrochen: GPA-ZIP-Passwort nicht eingegeben.")
                 return
-
-            # Offen gehaltenes Querverweis-Handle vor dem Schreiben freigeben, damit
-            # kein Datei-Lock entsteht (falls der Nutzer als Ziel dieselbe Datei wählt).
-            # Wird bei der nächsten Analyse neu aufgebaut; bis dahin lösen Klicks über
-            # frisches ZIP-Öffnen auf (korrekt, nur etwas langsamer).
-            if self._xref_index is not None:
-                self._xref_index.close()
-                self._xref_index = None
 
             pwd = self._pwd()
             ets_path_str = self.ets_var.get().strip()
