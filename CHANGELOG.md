@@ -30,6 +30,12 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 - **GPA-Prüfansicht**: Wird nur ein GPA-Projekt analysiert, blendet das Tool die
   ETS-Spalten, Auswahl-Knöpfe und „Synchronisieren“ aus. Die Kennzahlen zeigen
   Verwendet / In Logik (bzw. Mit Zeitschaltuhr) / Ungenutzt und filtern per Klick.
+- **Kennzahlen als Filter**: Klickbare Karten (unterstrichen, mit „›“) filtern die
+  Tabelle; der aktive Filter ist grün umrandet und erscheint als Chip „Filter: … ✕“
+  in der Titelzeile. Die separate Filterleiste entfällt. „Konflikte“ filtert auf
+  Adress-Konflikte, sobald es welche gibt.
+- Hinweise statt leerer Flächen: Platzhalter in der leeren Tabelle, Eigenschaften-Panel
+  ohne Auswahl nur mit Hinweis; Suchfeld zeigt wieder seinen Platzhaltertext.
 - **Spalte „Raum“** mit dem Standort der Visu-Ansicht (sortierbar, auch in CSV/Excel).
 - Eigenschaften-Panel zeigt alle Adressen nach Rolle (Senden / Status / Hören) und die
   Quelle verständlich („Senden (Write)“).
@@ -41,6 +47,8 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Benutzer nur, wenn sie vom Projekt-Normalfall abweichen; bündige Einrückung.
 - Logik- und Uhr-Spalte sowie die zugehörigen Filter erscheinen nur, wenn das Projekt
   solche Verweise enthält. Kürzere Statuszeile.
+- Scrollbalken im Verweise-Bereich nur noch, wenn der Inhalt nicht passt.
+- Logo im hellen Design ohne dunklen Hintergrund.
 
 ### Behoben
 - Datenpunkte, die nur in der Logik verwendet werden, wurden als „0 Verweise“ angezeigt.

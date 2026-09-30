@@ -151,7 +151,7 @@ class _Tooltip:
             self._job = None
 
     def _show(self) -> None:
-        if self._win:
+        if self._win or not self._get_text():
             return
         x = self._widget.winfo_rootx() + 12
         y = self._widget.winfo_rooty() + self._widget.winfo_height() + 6
@@ -360,6 +360,10 @@ def run_gui() -> None:
                 self.tree.tag_configure("ambiguous",     foreground=p["ambiguous_fg"])
                 self.tree.tag_configure("conflict",      foreground=p["conflict_fg"])
 
+        def _toolbar_bg(self) -> str:
+            """Exakte Hintergrundfarbe der Toolbar (CTk fg_color gray88 / gray14)."""
+            return "#e0e0e0" if self._theme_mode == "light" else "#242424"
+
         def _refresh_legacy_widgets(self) -> None:
             """Aktualisiert tk/ttk-Widgets (kein Auto-Recolor bei CTK-Theme-Wechsel)."""
             p = self._p
@@ -376,7 +380,9 @@ def run_gui() -> None:
                                          activebackground=p["soft_green"],
                                          activeforeground=p["text"])
             if hasattr(self, "_logo_canvas") and self._logo_canvas is not None:
-                self._logo_canvas.configure(bg=p["toolbar_bg"])
+                self._logo_canvas.configure(bg=self._toolbar_bg())
+            if hasattr(self, "_logo_label"):
+                self._logo_label.configure(bg=self._toolbar_bg())
             if hasattr(self, "_kpi_canvases"):
                 _kpi_bg = "gray86" if self._theme_mode == "light" else "gray17"
                 for canvas in self._kpi_canvases:
@@ -458,10 +464,12 @@ def run_gui() -> None:
             self._logo_canvas = None
             try:
                 self._logo_image = tk.PhotoImage(file=str(_icon_png))
-                tk.Label(toolbar, image=self._logo_image, text="", width=66,
-                         borderwidth=0, highlightthickness=0,
-                         bg=p["toolbar_bg"]).grid(
-                    row=0, column=0, padx=(12, 6), pady=6, sticky="w")
+                # tk.Label folgt dem CTk-Theme nicht von selbst → Hintergrund wird in
+                # _refresh_legacy_widgets nachgezogen (sonst dunkles Kästchen im hellen Modus).
+                self._logo_label = tk.Label(toolbar, image=self._logo_image, text="", width=66,
+                                            borderwidth=0, highlightthickness=0,
+                                            bg=self._toolbar_bg())
+                self._logo_label.grid(row=0, column=0, padx=(12, 6), pady=6, sticky="w")
             except Exception:
                 logo = tk.Canvas(toolbar, width=64, height=64,
                                  highlightthickness=0, bd=0, bg=p["toolbar_bg"])
@@ -851,64 +859,169 @@ def run_gui() -> None:
                 width=140, height=30, command=self.analyze)
             self.analyze_button.grid(row=0, column=0, sticky="ew")
 
+        # Anzahl KPI-Plätze; je nach Modus werden 5 oder 6 davon gezeigt.
+        _KPI_SLOTS = 6
+
         def _build_kpi_row(self, parent) -> None:
+            """Baut die KPI-Plätze. Inhalt und Klickbarkeit setzt _render_kpis je Modus."""
             row = ctk.CTkFrame(parent, corner_radius=0, fg_color="transparent")
             row.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-            for i in range(5):
-                row.columnconfigure(i, weight=1, uniform="kpi")
-
-            kpi_defs = [
-                ("gpa", "GPA-Datenpunkte", self.kpi_vars["gpa"],       "#009b68"),
-                ("ets", "ETS-Adressen",    self.kpi_vars["ets"],       "#009b68"),
-                ("⚠",  "Unterschiede",     self.kpi_vars["diff"],      "#f59e0b"),
-                ("✓",  "Ausgewählt",        self.kpi_vars["selected"],  "#16a34a"),
-                ("✅",  "Konflikte",         self.kpi_vars["conflicts"], "#16a34a"),
-            ]
+            self._kpi_row = row
             self._kpi_canvases: List[tk.Canvas] = []
-            # Je Karte: Widgets für den Wechsel zwischen ETS-Vergleich und GPA-Prüfansicht.
-            self._kpi_cards: List[Dict] = []
-            for col, (icon, title, var, color) in enumerate(kpi_defs):
-                card = self._card(row, 0, col, padx=(0, 8) if col < 4 else (0, 0))
+            self._kpi_slots: List[Dict] = []
+            self._kpi_hover: Optional[int] = None
+            for col in range(self._KPI_SLOTS):
+                card = self._card(row, 0, col, padx=(0, 8))
                 card.columnconfigure(1, weight=1)
-                if icon == "gpa":
-                    icon_widget = self._make_gpa_kpi_icon(card)
-                    self._gpa_kpi_canvas = icon_widget
-                    self._kpi_canvases.append(icon_widget)
-                elif icon == "ets":
-                    icon_widget = self._make_ets_kpi_icon(card)
-                    self._kpi_canvases.append(icon_widget)
-                else:
-                    icon_widget = ctk.CTkLabel(card, text=icon,
-                                               font=self._fonts["large"],
-                                               text_color=color, width=44)
-                    if title == "Konflikte":
-                        self._conflict_icon = icon_widget
-                icon_widget.grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
-                # Ersatz-Symbol für die GPA-Prüfansicht (anfangs ausgeblendet).
-                alt_icon = ctk.CTkLabel(card, text="", font=self._fonts["large"], width=44)
-                title_label = ctk.CTkLabel(card, text=title,
-                                           font=self._fonts["body"],
-                                           anchor="w")
-                title_label.grid(row=0, column=1, sticky="w", padx=(0, 10), pady=(8, 0))
-                value_label = ctk.CTkLabel(card, textvariable=var,
-                                           font=self._fonts["kpi"],
-                                           anchor="w")
-                value_label.grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(0, 8))
-                for w in (card, icon_widget, alt_icon, title_label, value_label):
+                # Feste Symbole für GPA/ETS (Canvas), sonst ein Text-Symbol.
+                canvas = None
+                if col == 0:
+                    canvas = self._make_gpa_kpi_icon(card)
+                    self._gpa_kpi_canvas = canvas
+                elif col == 1:
+                    canvas = self._make_ets_kpi_icon(card)
+                if canvas is not None:
+                    self._kpi_canvases.append(canvas)
+                    canvas.grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
+                icon = ctk.CTkLabel(card, text="", font=self._fonts["large"], width=44)
+                title = ctk.CTkLabel(card, text="", font=self._fonts["body"], anchor="w")
+                title.grid(row=0, column=1, sticky="w", padx=(0, 10), pady=(8, 0))
+                value = ctk.CTkLabel(card, text="", font=self._fonts["kpi"], anchor="w")
+                value.grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(0, 8))
+                for w in [card, icon, title, value] + ([canvas] if canvas is not None else []):
                     w.bind("<Button-1>", lambda _e, i=col: self._on_kpi_click(i), add="+")
-                self._kpi_cards.append(dict(
-                    card=card, icon=icon_widget, alt_icon=alt_icon, title=title_label,
-                    value=value_label, default=(title, var)))
+                    w.bind("<Enter>", lambda _e, i=col: self._on_kpi_hover(i), add="+")
+                    w.bind("<Leave>", lambda _e, i=col: self._on_kpi_hover(None), add="+")
+                self._kpi_slots.append(dict(card=card, canvas=canvas, icon=icon,
+                                            title=title, value=value, spec=None))
+                _Tooltip(card, lambda i=col: self._kpi_tooltip(i))
+            self._render_kpis()
+
+        def _kpi_specs(self) -> List[Dict]:
+            """KPI-Karten für den aktuellen Modus.
+
+            Jede Karte: title, var (kpi_vars-Schlüssel), icon ("gpa"/"ets" = Canvas,
+            sonst Text-Symbol), color und mode (Filter beim Klick oder None).
+            """
+            conflicts = int(self.kpi_vars["conflicts"].get() or 0)
+            conflict = dict(title="Konflikte", var="conflicts",
+                            icon="❌" if conflicts else "✅",
+                            color="#dc2626" if conflicts else "#16a34a",
+                            mode=self._CONFLICT_FILTER if conflicts else None)
+            gpa = dict(title="GPA-Datenpunkte", var="gpa", icon="gpa", color="", mode=None)
+            if not self._gpa_only:
+                return [gpa,
+                        dict(title="ETS-Adressen", var="ets", icon="ets", color="", mode=None),
+                        dict(title="Unterschiede", var="diff", icon="⚠", color="#f59e0b", mode=None),
+                        dict(title="Ausgewählt", var="selected", icon="✓", color="#16a34a", mode=None),
+                        conflict]
+            has_logic, has_timer = self._project_has("logic"), self._project_has("timer")
+            logic = dict(title="In Logik", var="logic", icon="⚙", color="#0ea5e9", mode="In Logik")
+            timer = dict(title="Mit Zeitschaltuhr", var="timer", icon="⏰", color="#a855f7",
+                         mode="Mit Zeitschaltuhr")
+            specs = [gpa,
+                     dict(title="Verwendet", var="used", icon="🔗", color="#16a34a", mode="Verwendet")]
+            if has_logic or not has_timer:
+                specs.append(logic)
+            specs.append(dict(title="Ungenutzt", var="unused", icon="○", color="#f59e0b",
+                              mode="Ungenutzt"))
+            if has_timer:
+                specs.append(timer)
+            specs.append(conflict)
+            return specs
+
+        def _render_kpis(self) -> None:
+            """Überträgt _kpi_specs auf die KPI-Plätze inkl. Klick-Optik und Aktiv-Markierung."""
+            if not hasattr(self, "_kpi_slots"):
+                return
+            specs = self._kpi_specs()
+            for i, slot in enumerate(self._kpi_slots):
+                spec = specs[i] if i < len(specs) else None
+                slot["spec"] = spec
+                card = slot["card"]
+                if spec is None:
+                    card.grid_remove()
+                    self._kpi_row.columnconfigure(i, weight=0, uniform="")
+                    continue
+                self._kpi_row.columnconfigure(i, weight=1, uniform="kpi")
+                last = i == len(specs) - 1
+                card.grid(row=0, column=i, sticky="nsew", padx=(0, 0) if last else (0, 8))
+                # Symbol: Canvas nur, wenn der Platz genau dieses Symbol zeigen soll.
+                canvas_key = {0: "gpa", 1: "ets"}.get(i)
+                if slot["canvas"] is not None and spec["icon"] == canvas_key:
+                    slot["icon"].grid_remove()
+                    slot["canvas"].grid()
+                else:
+                    if slot["canvas"] is not None:
+                        slot["canvas"].grid_remove()
+                    slot["icon"].configure(text=spec["icon"], text_color=spec["color"] or None)
+                    slot["icon"].grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
+                clickable = spec["mode"] is not None
+                active = clickable and spec["mode"] == self.ref_filter_mode
+                hover = clickable and self._kpi_hover == i
+                slot["title"].configure(
+                    text=spec["title"] + ("  ›" if clickable else ""),
+                    font=self._fonts["body_link" if clickable else "body"],
+                    text_color=(ACCENT_DARK, ACCENT) if active else ("gray10", "gray90"))
+                slot["value"].configure(textvariable=self.kpi_vars[spec["var"]],
+                                        text_color=(ACCENT_DARK, ACCENT) if active else ("gray10", "gray90"))
+                card.configure(
+                    border_width=2 if (active or hover) else 1,
+                    border_color=(ACCENT_DARK, ACCENT) if (active or hover) else ("gray78", "gray28"))
+                cursor = "hand2" if clickable else ""
+                for key in ("card", "icon", "title", "value", "canvas"):
+                    widget = slot[key]
+                    if widget is not None:
+                        try:
+                            widget.configure(cursor=cursor)
+                        except Exception:  # pragma: no cover - nicht jedes Widget kennt cursor
+                            pass
+
+        def _kpi_tooltip(self, index: int) -> str:
+            spec = self._kpi_slots[index]["spec"] if hasattr(self, "_kpi_slots") else None
+            if not spec or spec["mode"] is None:
+                return ""
+            if spec["mode"] == self.ref_filter_mode:
+                return "Filter aktiv – erneut klicken zeigt wieder alle Zeilen."
+            return f"Klicken: Tabelle auf „{spec['title']}“ filtern."
+
+        def _on_kpi_hover(self, index: Optional[int]) -> None:
+            if self._kpi_hover != index:
+                self._kpi_hover = index
+                self._render_kpis()
+
+        def _on_kpi_click(self, index: int) -> None:
+            """Klickbare KPI-Karten filtern die Tabelle; erneuter Klick hebt den Filter auf."""
+            spec = self._kpi_slots[index]["spec"] if index < len(self._kpi_slots) else None
+            if not spec or spec["mode"] is None:
+                return
+            mode = spec["mode"]
+            self._set_row_filter(REFERENCE_FILTERS[0] if self.ref_filter_mode == mode else mode)
 
         def _build_center_panel(self, parent) -> None:
             center = self._card(parent, 2)
             center.columnconfigure(0, weight=1)
-            center.rowconfigure(3, weight=1)
+            center.rowconfigure(2, weight=1)
 
-            self._center_title = ctk.CTkLabel(center, text="Datenpunkte – Änderungen",
+            # Titelzeile: Titel links, rechts aktiver Filter (klickbar zum Aufheben)
+            # und Zeilenzähler. Gefiltert wird über die KPI-Karten oben.
+            head = ctk.CTkFrame(center, corner_radius=0, fg_color="transparent")
+            head.grid(row=0, column=0, sticky="ew", padx=16, pady=(10, 6))
+            head.columnconfigure(1, weight=1)
+            self._center_title = ctk.CTkLabel(head, text="Datenpunkte – Änderungen",
                                               font=self._fonts["normal"],
                                               anchor="w")
-            self._center_title.grid(row=0, column=0, sticky="w", padx=16, pady=(12, 6))
+            self._center_title.grid(row=0, column=0, sticky="w")
+            self._filter_chip = ctk.CTkButton(
+                head, text="", height=26, corner_radius=13, width=10,
+                fg_color=(ACCENT, ACCENT_DARK), hover_color=(ACCENT_DARK, "#256b0e"),
+                text_color="white", font=self._fonts["body"],
+                command=self._clear_row_filter)
+            self.table_count_var = tk.StringVar(value="")
+            ctk.CTkLabel(head, textvariable=self.table_count_var,
+                         font=self._fonts["body"],
+                         text_color=("gray30", "gray65")).grid(
+                row=0, column=3, sticky="e", padx=(10, 0))
 
             # Toolbar
             tbar = ctk.CTkFrame(center, corner_radius=0, fg_color="transparent")
@@ -957,18 +1070,26 @@ def run_gui() -> None:
                 self._search_frame, text="✕", width=28,
                 font=self._fonts["normal"],
                 text_color=("gray40", "gray65"), cursor="hand2")
-            self._search_clear.bind("<Button-1>", lambda _: self.filter_var.set(""))
+            self._search_clear.bind("<Button-1>", lambda _: self._clear_search())
             self._search_clear.bind("<Enter>",
                 lambda _: self._search_clear.configure(text_color=("gray15", "gray90")))
             self._search_clear.bind("<Leave>",
                 lambda _: self._search_clear.configure(text_color=("gray40", "gray65")))
 
+            # Bewusst OHNE textvariable: CTkEntry zeigt mit textvariable keinen
+            # Platzhalter an. Der Text wird per KeyRelease in filter_var gespiegelt.
             self.search_entry = ctk.CTkEntry(
-                self._search_frame, textvariable=self.filter_var,
-                placeholder_text="Suchen…",
+                self._search_frame,
+                placeholder_text="Suchen: Name, GA, Raum, Ansicht, Logikseite …",
                 font=self._fonts["body"],
                 border_width=0, fg_color="transparent")
             self.search_entry.grid(row=0, column=1, sticky="ew", padx=(2, 4), pady=2)
+            def _on_search_key(_e=None) -> None:
+                text = self.search_entry.get()
+                if text != self.filter_var.get():
+                    self.filter_var.set(text)
+
+            self.search_entry.bind("<KeyRelease>", _on_search_key)
 
             def _on_filter_change(*_) -> None:
                 if self.filter_var.get():
@@ -994,34 +1115,9 @@ def run_gui() -> None:
             self.sync_button.grid(row=0, column=4, sticky="e")
             center.bind("<Configure>", self._on_center_resize)
 
-            # Verweise-Filter: Segment-Schalter mit Zählern + Zeilenzähler rechts.
-            fbar = ctk.CTkFrame(center, corner_radius=0, fg_color="transparent")
-            fbar.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 8))
-            fbar.columnconfigure(2, weight=1)
-            self._ref_filter_label = ctk.CTkLabel(
-                fbar, text="GPA-Verweise ⓘ", font=self._fonts["body"],
-                text_color=("gray30", "gray65"))
-            self._ref_filter_label.grid(row=0, column=0, sticky="w", padx=(2, 8))
-            self.ref_filter_seg = ctk.CTkSegmentedButton(
-                fbar, values=list(REFERENCE_FILTERS),
-                font=self._fonts["body"], height=28,
-                fg_color=("gray80", "gray25"),
-                unselected_color=("gray92", "gray25"),
-                unselected_hover_color=("gray84", "gray35"),
-                text_color=("gray10", "gray95"),
-                selected_color=ACCENT, selected_hover_color=ACCENT_DARK,
-                command=self._on_ref_filter_change)
-            self.ref_filter_seg.set(self.ref_filter_mode)
-            self.ref_filter_seg.grid(row=0, column=1, sticky="w")
-            self.table_count_var = tk.StringVar(value="")
-            ctk.CTkLabel(fbar, textvariable=self.table_count_var,
-                         font=self._fonts["body"],
-                         text_color=("gray30", "gray65")).grid(
-                row=0, column=3, sticky="e", padx=(8, 2))
-
             # Tabelle
             table_frame = ctk.CTkFrame(center, corner_radius=0, fg_color="transparent")
-            table_frame.grid(row=3, column=0, sticky="nsew", padx=14, pady=(0, 10))
+            table_frame.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 10))
             table_frame.columnconfigure(0, weight=1)
             table_frame.rowconfigure(0, weight=1)
 
@@ -1042,6 +1138,10 @@ def run_gui() -> None:
                 self.tree.column(col, width=66, minwidth=56, anchor="center", stretch=False)
             self.tree.grid(row=0, column=0, sticky="nsew")
             self.tree.bind("<Configure>", self._fit_columns, add="+")
+            # Platzhalter über der leeren Tabelle (Farbe = Zeilenhintergrund row_even).
+            self._empty_hint = ctk.CTkLabel(
+                table_frame, text="", font=self._fonts["body"], justify="center",
+                text_color=("gray35", "gray65"), fg_color=("#ffffff", "#2b2b2b"))
 
             yscroll = ctk.CTkScrollbar(table_frame, command=self.tree.yview)
             self.tree.configure(yscrollcommand=yscroll.set)
@@ -1087,9 +1187,6 @@ def run_gui() -> None:
             form.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 8))
             form.columnconfigure(0, weight=1)
 
-            ctk.CTkLabel(form, text="Ausgewählter Datenpunkt",
-                         font=self._fonts["subheader"],
-                         anchor="w").grid(row=0, column=0, sticky="w", pady=(0, 4))
 
             # Feld-Widgets je Name, damit die ETS-Felder in der GPA-Prüfansicht
             # ausgeblendet werden können (_apply_view_mode).
@@ -1135,6 +1232,11 @@ def run_gui() -> None:
                 form, fg_color="transparent", corner_radius=0)
             self.detail_xref_frame.grid(row=13, column=0, sticky="nsew")
             self.detail_xref_frame.columnconfigure(0, weight=1)
+            self.detail_xref_frame._parent_canvas.bind(
+                "<Configure>", lambda _e: self.after_idle(self._update_xref_scrollbar), add="+")
+            # Startzustand: Hinweis statt leerer Fläche mit Scrollbalken.
+            self.after(150, self.update_details)
+            self.after(150, self._update_empty_hint)
 
         def _build_footer(self) -> None:
             p = self._p
@@ -1185,18 +1287,12 @@ def run_gui() -> None:
             T(self.csv_button,
               "Exportiert die angezeigte Tabelle als CSV-Datei.")
             T(self._search_frame,
-              "Filtert die Tabelle in Echtzeit.\nDurchsucht Adresse, GA, Namen und Status.")
+              "Filtert die Tabelle in Echtzeit.\nDurchsucht GA, Namen, Status, Raum,\n"
+              "Visu-Ansichten und Logikseiten.")
             T(self.sync_button,
               "Erstellt eine neue GPA-Datei mit den ausgewählten\nNamens-Änderungen. Die Originaldatei bleibt unverändert.")
             T(self._theme_switch,
               "Design zwischen Hell und Dunkel wechseln.")
-            # CTkSegmentedButton unterstützt kein bind() → Tooltip am Label davor.
-            T(self._ref_filter_label,
-              "Filtert nach Verwendung im GPA-Projekt:\n"
-              "Verwendet – in Visu, Logik oder Zeitschaltuhr\n"
-              "Ungenutzt – nirgends verwendet (Aufräumkandidaten)\n"
-              "In Logik – als Baustein im Logikeditor\n"
-              "Mit Zeitschaltuhr – von einer Zeitschaltuhr geschaltet")
 
         def _setup_drop_targets(self) -> None:
             if not DND_AVAILABLE or not getattr(self, 'TkdndVersion', None):
@@ -1401,11 +1497,6 @@ def run_gui() -> None:
             self.kpi_vars["diff"].set(str(total))
             self.kpi_vars["selected"].set(str(selected))
             self.kpi_vars["conflicts"].set(str(conflicts))
-            if hasattr(self, "_conflict_icon"):
-                if conflicts > 0:
-                    self._conflict_icon.configure(text="❌", text_color="#dc2626")
-                else:
-                    self._conflict_icon.configure(text="✅", text_color="#16a34a")
             refs = self.references.values()
             self.kpi_vars["used"].set(str(sum(1 for r in refs if not r.is_unused)))
             self.kpi_vars["logic"].set(str(sum(1 for r in refs if r.logic)))
@@ -1413,23 +1504,21 @@ def run_gui() -> None:
             self.kpi_vars["timer"].set(str(sum(1 for r in refs if r.timers)))
             if hasattr(self, "table_count_var"):
                 self.table_count_var.set(f"Zeilen: {visible} von {total}")
+            self._render_kpis()
 
         # ── Ansichtsmodus: ETS-Vergleich vs. GPA-Prüfansicht ───────────────────
 
-        # KPI-Karten der GPA-Prüfansicht: Index → (Titel, kpi_var, Symbol, Farbe, Filter)
-        _GPA_KPIS = {
-            1: ("Verwendet", "used", "🔗", "#16a34a", "Verwendet"),
-            2: ("In Logik", "logic", "⚙", "#0ea5e9", "In Logik"),
-            3: ("Ungenutzt", "unused", "○", "#f59e0b", "Ungenutzt"),
-        }
-
-        def _gpa_kpi(self, index: int):
-            """KPI-Definition der Prüfansicht; ohne Logik, aber mit Uhren zeigt Karte 2
-            die Zeitschaltuhren statt einer nutzlosen „In Logik 0“."""
-            if (index == 2 and not self._project_has("logic")
-                    and self._project_has("timer")):
-                return ("Mit Zeitschaltuhr", "timer", "⏰", "#a855f7", "Mit Zeitschaltuhr")
-            return self._GPA_KPIS.get(index)
+        def _show_detail_fields(self, has_selection: bool) -> None:
+            """Panel-Felder ein-/ausblenden: ohne Auswahl nur der Hinweis im Verweise-
+            Bereich; "Neuer Name" nur im Vergleich; "Status" in der Prüfansicht nur bei
+            Adress-Konflikten (sonst stünde überall "Nur GPA")."""
+            conflicts = any(c.status == SyncStatus.ADRESSKONFLIKT for c in self.candidates)
+            for name, widgets in self._detail_widgets.items():
+                hide = (not has_selection
+                        or (name == "new" and self._gpa_only)
+                        or (name == "status" and self._gpa_only and not conflicts))
+                for w in widgets:
+                    w.grid_remove() if hide else w.grid()
 
         def _project_has(self, kind: str) -> bool:
             """Ob das analysierte GPA-Projekt überhaupt Logik-/Uhr-Verweise enthält."""
@@ -1470,36 +1559,10 @@ def run_gui() -> None:
             for name in ("select_all_button", "deselect_all_button", "sync_button"):
                 widget = getattr(self, name)
                 widget.grid_remove() if gpa_only else widget.grid()
-            # Panel: "Neuer Name" nur im Vergleich; "Status" in der Prüfansicht nur,
-            # wenn es Adress-Konflikte gibt (sonst stünde überall "Nur GPA").
-            for name, hide in (("new", gpa_only), ("status", gpa_only and not conflicts)):
-                for w in self._detail_widgets[name]:
-                    w.grid_remove() if hide else w.grid()
+            self._show_detail_fields(bool(self.tree.selection()))
             self.after_idle(self._fit_columns)
 
-            for i, info in enumerate(self._kpi_cards):
-                alt = self._gpa_kpi(i) if gpa_only else None
-                if alt:
-                    title, var_key, icon, color, _mode = alt
-                    info["icon"].grid_remove()
-                    info["alt_icon"].configure(text=icon, text_color=color)
-                    info["alt_icon"].grid(row=0, column=0, rowspan=2, padx=(14, 8),
-                                          pady=8, sticky="w")
-                    info["title"].configure(text=title)
-                    info["value"].configure(textvariable=self.kpi_vars[var_key])
-                    cursor = "hand2"
-                else:
-                    title, var = info["default"]
-                    info["alt_icon"].grid_remove()
-                    info["icon"].grid()
-                    info["title"].configure(text=title)
-                    info["value"].configure(textvariable=var)
-                    cursor = ""
-                for key in ("card", "title", "value", "alt_icon"):
-                    try:
-                        info[key].configure(cursor=cursor)
-                    except Exception:  # pragma: no cover - nicht alle Widgets kennen cursor
-                        pass
+            self._render_kpis()
 
         # Gewichte der mitwachsenden Text-Spalten beim Verteilen der Tabellenbreite.
         _STRETCH_WEIGHTS = {"room": 1.0, "old": 1.4, "new": 1.4}
@@ -1529,16 +1592,6 @@ def run_gui() -> None:
             for c in stretch:
                 width = int(free * self._STRETCH_WEIGHTS[c] / weight_sum)
                 self.tree.column(c, width=max(int(self.tree.column(c, "minwidth")), width))
-
-        def _on_kpi_click(self, index: int) -> None:
-            """In der GPA-Prüfansicht filtern die KPI-Karten die Tabelle."""
-            alt = self._gpa_kpi(index)
-            if not self._gpa_only or not alt:
-                return
-            mode = alt[4]
-            self.ref_filter_mode = REFERENCE_FILTERS[0] if self.ref_filter_mode == mode else mode
-            self._update_ref_filter_labels()
-            self.refresh_tree()
 
         def _set_busy(self, busy: bool) -> None:
             state = "disabled" if busy else "normal"
@@ -1665,14 +1718,23 @@ def run_gui() -> None:
             self.sort_column = "ga"
             self.sort_reverse = False
             self._set_busy(False)
+            # Filter zurücksetzen, falls er im neuen Projekt nicht mehr angeboten wird.
+            self.ref_filter_mode = REFERENCE_FILTERS[0]
             self._apply_view_mode()
-            self._update_ref_filter_labels()
+            self._update_filter_ui()
             self.refresh_tree()
             self._update_summary(len(datapoints), len(ets_map))
             unused = sum(1 for r in self.references.values() if r.is_unused)
             in_logic = sum(1 for r in self.references.values() if r.logic)
-            ref_info = (f" · {in_logic} in Logik · {unused} ungenutzt"
-                        if self.references else "")
+            ref_parts = []
+            if self.references:
+                if in_logic:
+                    ref_parts.append(f"{in_logic} in Logik")
+                timers = sum(1 for r in self.references.values() if r.timers)
+                if timers:
+                    ref_parts.append(f"{timers} mit Zeitschaltuhr")
+                ref_parts.append(f"{unused} ungenutzt")
+            ref_info = "".join(f" · {p}" for p in ref_parts)
             if datapoints and ets_map:
                 self.status_var.set(
                     f"Vergleich: {len(datapoints)} GPA-Datenpunkte · {len(ets_map)} ETS-Adressen · "
@@ -1697,10 +1759,13 @@ def run_gui() -> None:
         # ── Filter ─────────────────────────────────────────────────────────────
 
         def clear_filter(self) -> None:
-            self.filter_var.set("")
+            self._clear_search()
 
         def _row_matches_filter(self, c: SyncCandidate, needle: str) -> bool:
-            if not matches_reference_filter(self._refs_for(c), self.ref_filter_mode):
+            if self.ref_filter_mode == self._CONFLICT_FILTER:
+                if c.status != SyncStatus.ADRESSKONFLIKT:
+                    return False
+            elif not matches_reference_filter(self._refs_for(c), self.ref_filter_mode):
                 return False
             if not needle:
                 return True
@@ -1735,45 +1800,33 @@ def run_gui() -> None:
                 return ""
             return self._as_link_text(str(count)) if count else "–"
 
-        def _update_ref_filter_labels(self) -> None:
-            """Beschriftet die Filter-Segmente mit der Trefferzahl, z. B. 'Ungenutzt (7)'."""
-            if not hasattr(self, "ref_filter_seg"):
-                return
-            rows = [self._refs_for(c) for c in self.candidates]
-            self._ref_filter_labels: Dict[str, str] = {}
-            # Filter ohne jeden Treffer im Projekt (keine Logik / keine Uhr) weglassen.
-            hidden = set()
-            if self.references and not self._project_has("logic"):
-                hidden.add("In Logik")
-            if self.references and not self._project_has("timer"):
-                hidden.add("Mit Zeitschaltuhr")
-            if self.ref_filter_mode in hidden:
-                self.ref_filter_mode = REFERENCE_FILTERS[0]
-            for mode in REFERENCE_FILTERS:
-                if mode in hidden:
-                    continue
-                if mode == REFERENCE_FILTERS[0] or not self.references:
-                    label = mode
-                else:
-                    hits = sum(1 for r in rows if matches_reference_filter(r, mode))
-                    label = f"{mode} ({hits})"
-                self._ref_filter_labels[label] = mode
-            labels = list(self._ref_filter_labels)
-            self.ref_filter_seg.configure(values=labels)
-            current = next((lbl for lbl, m in self._ref_filter_labels.items()
-                            if m == self.ref_filter_mode), labels[0])
-            self.ref_filter_seg.set(current)
+        # Zusätzlicher Tabellenfilter (nur Adress-Konflikte), neben REFERENCE_FILTERS.
+        _CONFLICT_FILTER = "Adress-Konflikte"
 
-        def _on_ref_filter_change(self, label: str) -> None:
-            labels = getattr(self, "_ref_filter_labels", {})
-            self.ref_filter_mode = labels.get(label, label if label in REFERENCE_FILTERS
-                                              else REFERENCE_FILTERS[0])
+        def _set_row_filter(self, mode: str) -> None:
+            """Setzt den Tabellenfilter (KPI-Klick) und aktualisiert Tabelle, KPIs und Chip."""
+            self.ref_filter_mode = mode
             self.refresh_tree()
-            if self.ref_filter_mode != REFERENCE_FILTERS[0] and self.ets_var.get().strip():
-                # Im ETS-Vergleich listet die Tabelle nur Unterschiede – darauf hinweisen.
-                self.status_var.set(
-                    "Hinweis: Mit ETS-Datei zeigt die Tabelle nur Unterschiede. "
-                    "Für die Verweise aller Datenpunkte nur das GPA-Projekt analysieren.")
+            self._update_filter_ui()
+
+        def _clear_row_filter(self) -> None:
+            self._set_row_filter(REFERENCE_FILTERS[0])
+
+        def _update_filter_ui(self) -> None:
+            """Zeigt den aktiven Filter als Chip „Filter: … ✕“ in der Titelzeile."""
+            if not hasattr(self, "_filter_chip"):
+                return
+            if self.ref_filter_mode == REFERENCE_FILTERS[0]:
+                self._filter_chip.grid_remove()
+            else:
+                self._filter_chip.configure(text=f"  Filter: {self.ref_filter_mode}   ✕  ")
+                self._filter_chip.grid(row=0, column=2, sticky="e")
+            self._render_kpis()
+
+        def _clear_search(self) -> None:
+            self.search_entry.delete(0, "end")
+            self.filter_var.set("")
+            self.focus_set()  # Platzhaltertext wieder anzeigen
 
         # ── Tabelle ────────────────────────────────────────────────────────────
 
@@ -1816,10 +1869,26 @@ def run_gui() -> None:
             self._update_summary()
             self.update_details()
             self._refresh_headings()
+            self._update_empty_hint()
             if hasattr(self, "sync_button"):
                 can_sync = any(c.selected and c.status == SyncStatus.AENDERUNG
                                for c in self.candidates)
                 self.sync_button.configure(state="normal" if can_sync else "disabled")
+
+        def _update_empty_hint(self) -> None:
+            """Zeigt über der leeren Tabelle einen Hinweis (Start bzw. keine Treffer)."""
+            if not hasattr(self, "_empty_hint"):
+                return
+            if self.visible_iids:
+                self._empty_hint.place_forget()
+                return
+            if not self.candidates:
+                text = ("GPA-Projekt und/oder ETS-Datei oben ablegen\n"
+                        "und auf „Analysieren“ klicken.")
+            else:
+                text = "Keine Treffer für den aktuellen Filter bzw. die Suche."
+            self._empty_hint.configure(text=text)
+            self._empty_hint.place(relx=0.5, rely=0.4, anchor="center")
 
         def select_all(self) -> None:
             visible = set(self.visible_iids)
@@ -2100,13 +2169,18 @@ def run_gui() -> None:
                 for var in self.detail_vars.values():
                     var.set("-")
                 self.detail_ga_roles.configure(text="")
+                self.detail_ga_roles.grid_remove()
+                self._show_detail_fields(False)
                 self._schedule_detail_xrefs(None)
                 return
+            self._show_detail_fields(True)
             c = self.candidates[int(selected[0])]
             self.detail_vars["status"].set(c.status)
             self.detail_vars["ga"].set(c.group_address)
             dp = self.datapoint_by_path.get(c.zip_path) if c.zip_path else None
-            self.detail_ga_roles.configure(text=format_ga_roles(dp) if dp is not None else "")
+            roles = format_ga_roles(dp) if dp is not None else ""
+            self.detail_ga_roles.configure(text=roles)
+            self.detail_ga_roles.grid() if roles else self.detail_ga_roles.grid_remove()
             self.detail_vars["source"].set(source_label(c.source_field))
             self.detail_vars["old"].set(c.current_name)
             self.detail_vars["new"].set(c.new_name)
@@ -2279,10 +2353,20 @@ def run_gui() -> None:
                              anchor="w", wraplength=235).grid(
                     row=0, column=0, sticky="ew", padx=6, pady=(2, 4))
 
+            # Scrollbalken erst nach dem Aufbau prüfen (nur zeigen, wenn nötig). Zweimal
+            # zeitversetzt, weil sich die Panelhöhe beim Ein-/Ausblenden der Felder
+            # erst nach dem nächsten Layout-Durchlauf einstellt.
+            self.after(40, self._update_xref_scrollbar)
+            self.after(250, self._update_xref_scrollbar)
             refs = self._refs_for(candidate) if candidate is not None else None
+            if candidate is None:
+                self.detail_xref_header.configure(text="GPA-Verweise")
+                _muted("Zeile in der Tabelle auswählen, um Adressen und "
+                       "Verwendungen des Datenpunkts zu sehen.")
+                return
             if refs is None:
                 self.detail_xref_header.configure(text="GPA-Verweise")
-                _muted("-")
+                _muted("Kein GPA-Datenpunkt (nur in der ETS vorhanden).")
                 return
             self.detail_xref_header.configure(text=f"GPA-Verweise ({refs.total})")
             if refs.is_unused:
@@ -2291,6 +2375,27 @@ def run_gui() -> None:
                 return
             self._render_reference_sections(self.detail_xref_frame, refs,
                                             wrap=235, compact=True, per_section_limit=10)
+
+        def _update_xref_scrollbar(self) -> None:
+            """Blendet den Scrollbalken des Verweise-Bereichs nur ein, wenn der Inhalt
+            nicht in die sichtbare Höhe passt (CTkScrollableFrame zeigt ihn sonst immer)."""
+            frame = getattr(self, "detail_xref_frame", None)
+            if frame is None:
+                return
+            try:
+                frame.update_idletasks()
+                # Tatsächliche Unterkante des Inhalts (winfo_reqheight des Rahmens
+                # enthält eine CTk-Mindesthöhe und ist daher unbrauchbar).
+                needed = max((w.winfo_y() + w.winfo_height() for w in frame.winfo_children()),
+                             default=0)
+                available = frame._parent_canvas.winfo_height()
+                if needed <= available:
+                    frame._scrollbar.grid_remove()
+                    frame._parent_canvas.yview_moveto(0)
+                else:
+                    frame._scrollbar.grid()
+            except Exception:  # pragma: no cover - interne CTk-API, rein kosmetisch
+                pass
 
         # ── Querverweise-Popup ─────────────────────────────────────────────────
 
