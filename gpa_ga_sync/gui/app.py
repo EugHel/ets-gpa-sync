@@ -892,8 +892,10 @@ def run_gui() -> None:
                     w.bind("<Button-1>", lambda _e, i=col: self._on_kpi_click(i), add="+")
                     w.bind("<Enter>", lambda _e, i=col: self._on_kpi_hover(i), add="+")
                     w.bind("<Leave>", lambda _e, i=col: self._on_kpi_hover(None), add="+")
+                # state="init": erzwingt beim ersten _render_kpis das Einrichten (auch
+                # das Ausblenden unbenutzter Plätze).
                 self._kpi_slots.append(dict(card=card, canvas=canvas, icon=icon,
-                                            title=title, value=value, spec=None))
+                                            title=title, value=value, spec=None, state="init"))
                 _Tooltip(card, lambda i=col: self._kpi_tooltip(i))
             self._render_kpis()
 
@@ -908,7 +910,9 @@ def run_gui() -> None:
                             icon="❌" if conflicts else "✅",
                             color="#dc2626" if conflicts else "#16a34a",
                             mode=self._CONFLICT_FILTER if conflicts else None)
-            gpa = dict(title="GPA-Datenpunkte", var="gpa", icon="gpa", color="", mode=None)
+            reset = (REFERENCE_FILTERS[0]
+                     if self._gpa_only or self.ref_filter_mode != REFERENCE_FILTERS[0] else None)
+            gpa = dict(title="GPA-Datenpunkte", var="gpa", icon="gpa", color="", mode=reset)
             if not self._gpa_only:
                 return [gpa,
                         dict(title="ETS-Adressen", var="ets", icon="ets", color="", mode=None),
@@ -931,13 +935,26 @@ def run_gui() -> None:
             return specs
 
         def _render_kpis(self) -> None:
-            """Überträgt _kpi_specs auf die KPI-Plätze inkl. Klick-Optik und Aktiv-Markierung."""
+            """Überträgt _kpi_specs auf die KPI-Plätze inkl. Klick-Optik und Aktiv-Markierung.
+
+            Jeder Platz wird nur neu konfiguriert, wenn sich sein Zustand geändert hat –
+            wiederholtes Umkonfigurieren (bei jeder Tabellenaktualisierung) ließ die
+            Karten sonst sichtbar flackern.
+            """
             if not hasattr(self, "_kpi_slots"):
                 return
             specs = self._kpi_specs()
             for i, slot in enumerate(self._kpi_slots):
                 spec = specs[i] if i < len(specs) else None
                 slot["spec"] = spec
+                clickable = spec is not None and spec["mode"] is not None
+                active = (clickable and spec["mode"] != REFERENCE_FILTERS[0]
+                          and spec["mode"] == self.ref_filter_mode)
+                state = (None if spec is None else
+                         (tuple(sorted(spec.items())), active, i == len(specs) - 1))
+                if slot.get("state") == state:
+                    continue
+                slot["state"] = state
                 card = slot["card"]
                 if spec is None:
                     card.grid_remove()
@@ -956,18 +973,14 @@ def run_gui() -> None:
                         slot["canvas"].grid_remove()
                     slot["icon"].configure(text=spec["icon"], text_color=spec["color"] or None)
                     slot["icon"].grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
-                clickable = spec["mode"] is not None
-                active = clickable and spec["mode"] == self.ref_filter_mode
-                hover = clickable and self._kpi_hover == i
-                slot["title"].configure(
-                    text=spec["title"] + ("  ›" if clickable else ""),
-                    font=self._fonts["body_link" if clickable else "body"],
-                    text_color=(ACCENT_DARK, ACCENT) if active else ("gray10", "gray90"))
-                slot["value"].configure(textvariable=self.kpi_vars[spec["var"]],
-                                        text_color=(ACCENT_DARK, ACCENT) if active else ("gray10", "gray90"))
-                card.configure(
-                    border_width=2 if (active or hover) else 1,
-                    border_color=(ACCENT_DARK, ACCENT) if (active or hover) else ("gray78", "gray28"))
+                color = (ACCENT_DARK, ACCENT) if active else ("gray10", "gray90")
+                # Klickbarkeit: Pfeil + Hand-Cursor + Rahmen beim Überfahren (kein Unterstrich).
+                show_arrow = clickable and spec["mode"] != REFERENCE_FILTERS[0]
+                slot["title"].configure(text=spec["title"] + ("  ›" if show_arrow else ""),
+                                        text_color=color)
+                slot["value"].configure(textvariable=self.kpi_vars[spec["var"]], text_color=color)
+                slot["active"] = active
+                self._paint_kpi_border(i)
                 cursor = "hand2" if clickable else ""
                 for key in ("card", "icon", "title", "value", "canvas"):
                     widget = slot[key]
@@ -977,18 +990,43 @@ def run_gui() -> None:
                         except Exception:  # pragma: no cover - nicht jedes Widget kennt cursor
                             pass
 
+        def _paint_kpi_border(self, index: int) -> None:
+            slot = self._kpi_slots[index]
+            spec = slot.get("spec")
+            clickable = spec is not None and spec["mode"] is not None
+            highlight = slot.get("active") or (clickable and self._kpi_hover == index)
+            want = (2, (ACCENT_DARK, ACCENT)) if highlight else (1, ("gray78", "gray28"))
+            if slot.get("border") != want:
+                slot["border"] = want
+                slot["card"].configure(border_width=want[0], border_color=want[1])
+
         def _kpi_tooltip(self, index: int) -> str:
             spec = self._kpi_slots[index]["spec"] if hasattr(self, "_kpi_slots") else None
             if not spec or spec["mode"] is None:
                 return ""
+            if spec["mode"] == REFERENCE_FILTERS[0]:
+                return "Klicken: Filter aufheben und alle Datenpunkte zeigen."
             if spec["mode"] == self.ref_filter_mode:
                 return "Filter aktiv – erneut klicken zeigt wieder alle Zeilen."
             return f"Klicken: Tabelle auf „{spec['title']}“ filtern."
 
         def _on_kpi_hover(self, index: Optional[int]) -> None:
-            if self._kpi_hover != index:
-                self._kpi_hover = index
-                self._render_kpis()
+            """Hover-Rahmen. Beim Wechsel zwischen Karte und ihren Beschriftungen feuert
+            Tk Leave/Enter – ein Leave, bei dem der Mauszeiger noch in derselben Karte
+            steht, wird ignoriert (sonst flackert der Rahmen)."""
+            if index is None and self._kpi_hover is not None:
+                card = self._kpi_slots[self._kpi_hover]["card"]
+                under = self.winfo_containing(*self.winfo_pointerxy())
+                while under is not None:
+                    if under is card:
+                        return
+                    under = under.master
+            if self._kpi_hover == index:
+                return
+            previous, self._kpi_hover = self._kpi_hover, index
+            for i in (previous, index):
+                if i is not None:
+                    self._paint_kpi_border(i)
 
         def _on_kpi_click(self, index: int) -> None:
             """Klickbare KPI-Karten filtern die Tabelle; erneuter Klick hebt den Filter auf."""
@@ -996,7 +1034,10 @@ def run_gui() -> None:
             if not spec or spec["mode"] is None:
                 return
             mode = spec["mode"]
-            self._set_row_filter(REFERENCE_FILTERS[0] if self.ref_filter_mode == mode else mode)
+            if mode == REFERENCE_FILTERS[0] or self.ref_filter_mode == mode:
+                self._set_row_filter(REFERENCE_FILTERS[0])
+            else:
+                self._set_row_filter(mode)
 
         def _build_center_panel(self, parent) -> None:
             center = self._card(parent, 2)
@@ -1142,6 +1183,7 @@ def run_gui() -> None:
             self._empty_hint = ctk.CTkLabel(
                 table_frame, text="", font=self._fonts["body"], justify="center",
                 text_color=("gray35", "gray65"), fg_color=("#ffffff", "#2b2b2b"))
+            self._start_guide = self._build_start_guide(table_frame)
 
             yscroll = ctk.CTkScrollbar(table_frame, command=self.tree.yview)
             self.tree.configure(yscrollcommand=yscroll.set)
@@ -1875,20 +1917,52 @@ def run_gui() -> None:
                                for c in self.candidates)
                 self.sync_button.configure(state="normal" if can_sync else "disabled")
 
+        def _build_start_guide(self, parent) -> ctk.CTkFrame:
+            """Kurzanleitung über der leeren Tabelle vor der ersten Analyse."""
+            bg = ("#ffffff", "#2b2b2b")  # = Zeilenhintergrund der Tabelle
+            guide = ctk.CTkFrame(parent, fg_color=bg, corner_radius=0)
+            muted = ("gray35", "gray65")
+            ctk.CTkLabel(guide, text="Zwei Möglichkeiten", font=self._fonts["subheader"],
+                         fg_color=bg).grid(row=0, column=0, columnspan=2, pady=(0, 14))
+            blocks = [
+                ("🔍", "Nur GPA-Projekt laden  →  „Analysieren“",
+                 "Prüfansicht: Wo wird jeder Datenpunkt verwendet?\n"
+                 "Visu-Ansichten mit Raum, Logikbausteine und Zeitschaltuhren –\n"
+                 "und welche Datenpunkte nirgends verwendet werden."),
+                ("⇄", "GPA-Projekt + ETS-Datei laden  →  „Analysieren“",
+                 "Namensabgleich: Gruppenadress-Namen aus der ETS (.xml / .knxproj)\n"
+                 "in die GPA übernehmen. Das Original bleibt unverändert,\n"
+                 "es entsteht eine neue .gpa-Datei."),
+            ]
+            for i, (icon, head, body) in enumerate(blocks):
+                r = 1 + i * 2
+                ctk.CTkLabel(guide, text=icon, font=self._fonts["large"], width=40,
+                             text_color=(ACCENT_DARK, ACCENT), fg_color=bg).grid(
+                    row=r, column=0, rowspan=2, sticky="n", padx=(0, 12), pady=(0, 16))
+                ctk.CTkLabel(guide, text=head, font=self._fonts["body_bold"], anchor="w",
+                             fg_color=bg).grid(row=r, column=1, sticky="w")
+                ctk.CTkLabel(guide, text=body, font=self._fonts["body"], justify="left",
+                             anchor="w", text_color=muted, fg_color=bg).grid(
+                    row=r + 1, column=1, sticky="w", pady=(0, 16))
+            ctk.CTkLabel(guide, text="Dateien oben ablegen oder über die Knöpfe auswählen.",
+                         font=self._fonts["body"], text_color=muted, fg_color=bg).grid(
+                row=5, column=0, columnspan=2, pady=(4, 0))
+            return guide
+
         def _update_empty_hint(self) -> None:
             """Zeigt über der leeren Tabelle einen Hinweis (Start bzw. keine Treffer)."""
             if not hasattr(self, "_empty_hint"):
                 return
+            self._empty_hint.place_forget()
+            self._start_guide.place_forget()
             if self.visible_iids:
-                self._empty_hint.place_forget()
                 return
             if not self.candidates:
-                text = ("GPA-Projekt und/oder ETS-Datei oben ablegen\n"
-                        "und auf „Analysieren“ klicken.")
+                self._start_guide.place(relx=0.5, rely=0.55, anchor="center")
             else:
-                text = "Keine Treffer für den aktuellen Filter bzw. die Suche."
-            self._empty_hint.configure(text=text)
-            self._empty_hint.place(relx=0.5, rely=0.4, anchor="center")
+                self._empty_hint.configure(
+                    text="Keine Treffer für den aktuellen Filter bzw. die Suche.")
+                self._empty_hint.place(relx=0.5, rely=0.4, anchor="center")
 
         def select_all(self) -> None:
             visible = set(self.visible_iids)
