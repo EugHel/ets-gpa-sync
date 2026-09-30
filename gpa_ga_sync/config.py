@@ -34,18 +34,20 @@ LICENSING_ENABLED = False
 UI_SCALE_FACTOR = 1.0
 
 # --- Allgemeine Schrift-Stufen ---
-FONT_SIZE_TITLE    = 26   # Toolbar-Titel "ETS GPA Sync"
-FONT_SIZE_HEADER   = 16   # Sektion-Header ("Datenquellen importieren")
-FONT_SIZE_SUBHEADER = 14  # Karten-Titel ("GPA-Projekt"), "Eigenschaften"
-FONT_SIZE_BODY     = 14   # Standard-Text, Buttons, Drop-Zones
+# Hinweis: CTk-Schriften sind Pixel, die Tabelle (ttk) nutzt Punkt –
+# 10 pt in der Tabelle entsprechen etwa 13 px bei den übrigen Elementen.
+FONT_SIZE_TITLE    = 22   # Toolbar-Titel "ETS GPA Sync"
+FONT_SIZE_HEADER   = 15   # Sektion-Header ("Datenquellen importieren")
+FONT_SIZE_SUBHEADER = 13  # Karten-Titel ("GPA-Projekt"), "Eigenschaften"
+FONT_SIZE_BODY     = 13   # Standard-Text, Buttons, Drop-Zones
 FONT_SIZE_SMALL    = 10   # Statusleiste, Pfad-Anzeige, Captions
-FONT_SIZE_KPI      = 20   # Große KPI-Zahlen
+FONT_SIZE_KPI      = 19   # Große KPI-Zahlen
 
 # --- Einzeln einstellbare Spezial-Elemente ---
-FONT_SIZE_TABLE_HEADER   = 11   # Tabellen-Spaltenköpfe (Sync, Status, GA, ...)
-FONT_SIZE_TABLE_BODY     = 11   # Tabellen-Datenzeilen
+FONT_SIZE_TABLE_HEADER   = 10   # Tabellen-Spaltenköpfe (Sync, Status, GA, ...)
+FONT_SIZE_TABLE_BODY     = 10   # Tabellen-Datenzeilen
 FONT_SIZE_INFOBOX        = 10   # Info-Box rechts ("Der neue Name kann ...")
-FONT_SIZE_PROPERTY_LABEL = 14   # Eigenschaften-Feld-Labels (Status, GA, ...)
+FONT_SIZE_PROPERTY_LABEL = 13   # Eigenschaften-Feld-Labels (Status, GA, ...)
 
 # ═══════════════════════════════════════════════════════════
 # CHANNEL-TYPE-ANZEIGENAMEN (Verweise-Popup)

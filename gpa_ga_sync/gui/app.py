@@ -322,7 +322,7 @@ def run_gui() -> None:
             except Exception:
                 pass
             style.configure("Treeview",
-                            rowheight=32,
+                            rowheight=30,
                             font=TTK_TABLE_BODY,
                             background=p["row_even"],
                             fieldbackground=p["row_even"],
@@ -974,10 +974,8 @@ def run_gui() -> None:
                     slot["icon"].configure(text=spec["icon"], text_color=spec["color"] or None)
                     slot["icon"].grid(row=0, column=0, rowspan=2, padx=(14, 8), pady=8, sticky="w")
                 color = (ACCENT_DARK, ACCENT) if active else ("gray10", "gray90")
-                # Klickbarkeit: Pfeil + Hand-Cursor + Rahmen beim Überfahren (kein Unterstrich).
-                show_arrow = clickable and spec["mode"] != REFERENCE_FILTERS[0]
-                slot["title"].configure(text=spec["title"] + ("  ›" if show_arrow else ""),
-                                        text_color=color)
+                # Klickbarkeit: Hand-Cursor + grüner Rahmen beim Überfahren/aktiv.
+                slot["title"].configure(text=spec["title"], text_color=color)
                 slot["value"].configure(textvariable=self.kpi_vars[spec["var"]], text_color=color)
                 slot["active"] = active
                 self._paint_kpi_border(i)
@@ -1179,6 +1177,9 @@ def run_gui() -> None:
                 self.tree.column(col, width=66, minwidth=56, anchor="center", stretch=False)
             self.tree.grid(row=0, column=0, sticky="nsew")
             self.tree.bind("<Configure>", self._fit_columns, add="+")
+            self.tree.bind("<Configure>",
+                           lambda _e: getattr(self, "_guide_on", False) and self._place_start_guide(),
+                           add="+")
             # Platzhalter über der leeren Tabelle (Farbe = Zeilenhintergrund row_even).
             self._empty_hint = ctk.CTkLabel(
                 table_frame, text="", font=self._fonts["body"], justify="center",
@@ -1922,32 +1923,67 @@ def run_gui() -> None:
             bg = ("#ffffff", "#2b2b2b")  # = Zeilenhintergrund der Tabelle
             guide = ctk.CTkFrame(parent, fg_color=bg, corner_radius=0)
             muted = ("gray35", "gray65")
-            ctk.CTkLabel(guide, text="Zwei Möglichkeiten", font=self._fonts["subheader"],
-                         fg_color=bg).grid(row=0, column=0, columnspan=2, pady=(0, 14))
             blocks = [
                 ("🔍", "Nur GPA-Projekt laden  →  „Analysieren“",
-                 "Prüfansicht: Wo wird jeder Datenpunkt verwendet?\n"
-                 "Visu-Ansichten mit Raum, Logikbausteine und Zeitschaltuhren –\n"
-                 "und welche Datenpunkte nirgends verwendet werden."),
-                ("⇄", "GPA-Projekt + ETS-Datei laden  →  „Analysieren“",
-                 "Namensabgleich: Gruppenadress-Namen aus der ETS (.xml / .knxproj)\n"
-                 "in die GPA übernehmen. Das Original bleibt unverändert,\n"
-                 "es entsteht eine neue .gpa-Datei."),
+                 "Prüfansicht: zeigt für jeden Datenpunkt, wo er verwendet wird (Visu-Ansicht "
+                 "mit Raum, Logik, Zeitschaltuhr) und welche nirgends verwendet werden. "
+                 "Am Projekt wird nichts verändert."),
+                ("⇄", "GPA-Projekt + ETS-Datei laden  →  „Analysieren“  →  „Synchronisieren“",
+                 "Namensabgleich: „Analysieren“ listet alle Datenpunkte, deren Name in der GPA "
+                 "von der ETS abweicht. „Synchronisieren“ speichert daraus eine neue .gpa-Datei "
+                 "mit den Namen aus der ETS – das Original bleibt unverändert."),
             ]
+            self._guide_bodies: List[ctk.CTkLabel] = []
             for i, (icon, head, body) in enumerate(blocks):
-                r = 1 + i * 2
-                ctk.CTkLabel(guide, text=icon, font=self._fonts["large"], width=40,
+                r = i * 2
+                ctk.CTkLabel(guide, text=icon, font=self._fonts["large"], width=36,
                              text_color=(ACCENT_DARK, ACCENT), fg_color=bg).grid(
-                    row=r, column=0, rowspan=2, sticky="n", padx=(0, 12), pady=(0, 16))
+                    row=r, column=0, rowspan=2, sticky="n", padx=(0, 10))
                 ctk.CTkLabel(guide, text=head, font=self._fonts["body_bold"], anchor="w",
                              fg_color=bg).grid(row=r, column=1, sticky="w")
-                ctk.CTkLabel(guide, text=body, font=self._fonts["body"], justify="left",
-                             anchor="w", text_color=muted, fg_color=bg).grid(
-                    row=r + 1, column=1, sticky="w", pady=(0, 16))
-            ctk.CTkLabel(guide, text="Dateien oben ablegen oder über die Knöpfe auswählen.",
-                         font=self._fonts["body"], text_color=muted, fg_color=bg).grid(
-                row=5, column=0, columnspan=2, pady=(4, 0))
+                body_label = ctk.CTkLabel(guide, text=body, font=self._fonts["body"],
+                                          justify="left", anchor="w", wraplength=560,
+                                          text_color=muted, fg_color=bg)
+                body_label.grid(row=r + 1, column=1, sticky="w", pady=(0, 12))
+                self._guide_bodies.append(body_label)
+            self._guide_footer = ctk.CTkLabel(
+                guide, text="Dateien oben ablegen oder über die Knöpfe auswählen.",
+                font=self._fonts["body"], text_color=muted, fg_color=bg)
+            self._guide_footer.grid(row=4, column=0, columnspan=2, pady=(2, 0))
             return guide
+
+        def _tree_heading_height(self) -> int:
+            """Höhe der Tabellen-Kopfzeile (per identify_region ermittelt, DPI-unabhängig)."""
+            height = 0
+            for y in range(0, 150, 2):
+                if self.tree.identify_region(20, y) == "heading":
+                    height = y + 2
+            return height or 40
+
+        def _place_start_guide(self, _event=None) -> None:
+            """Setzt die Anleitung mittig in den Bereich UNTER der Kopfzeile. Reicht die
+            Höhe nicht, werden erst Fußzeile, dann Erläuterungen ausgeblendet – so ragt
+            sie nie über die Tabelle hinaus."""
+            guide = getattr(self, "_start_guide", None)
+            if guide is None or not getattr(self, "_guide_on", False):
+                return
+            head = self._tree_heading_height()
+            available = self.tree.winfo_height() - head - 12
+            for w in (*self._guide_bodies, self._guide_footer):
+                w.grid()
+            wrap = max(260, min(560, self.tree.winfo_width() - 120))
+            for w in self._guide_bodies:
+                w.configure(wraplength=wrap)
+            guide.update_idletasks()
+            if guide.winfo_reqheight() > available:
+                self._guide_footer.grid_remove()
+                guide.update_idletasks()
+            if guide.winfo_reqheight() > available:
+                for w in self._guide_bodies:
+                    w.grid_remove()
+                guide.update_idletasks()
+            y = head + max(6, (available - guide.winfo_reqheight()) // 2)
+            guide.place(in_=self.tree, relx=0.5, y=y, anchor="n")
 
         def _update_empty_hint(self) -> None:
             """Zeigt über der leeren Tabelle einen Hinweis (Start bzw. keine Treffer)."""
@@ -1955,10 +1991,12 @@ def run_gui() -> None:
                 return
             self._empty_hint.place_forget()
             self._start_guide.place_forget()
+            self._guide_on = False
             if self.visible_iids:
                 return
-            if not self.candidates:
-                self._start_guide.place(relx=0.5, rely=0.55, anchor="center")
+            self._guide_on = not self.candidates
+            if self._guide_on:
+                self._place_start_guide()
             else:
                 self._empty_hint.configure(
                     text="Keine Treffer für den aktuellen Filter bzw. die Suche.")
@@ -2493,9 +2531,14 @@ def run_gui() -> None:
                          font=self._fonts["body"], justify="left",
                          text_color=("gray30", "gray70"), wraplength=550).grid(
                 row=1, column=0, padx=20, pady=(0, 2), sticky="w")
+            # Nur Kategorien nennen, die es im Projekt überhaupt gibt.
+            counts = [f"{len(refs.visu)} Visu"]
+            if self._project_has("logic"):
+                counts.append(f"{len(refs.logic)} Logik")
+            if self._project_has("timer"):
+                counts.append(f"{len(refs.timers)} Zeitschaltuhr")
             ctk.CTkLabel(dialog,
-                         text=f"{len(refs.visu)} Visu  ·  {len(refs.logic)} Logik  ·  "
-                              f"{len(refs.timers)} Zeitschaltuhr",
+                         text="  ·  ".join(counts),
                          font=self._fonts["body_bold"], anchor="w").grid(
                 row=2, column=0, padx=20, pady=(0, 8), sticky="w")
 
@@ -2592,14 +2635,14 @@ def run_gui() -> None:
                 ctk.CTkLabel(cell, text=f"{icon}  {main}", font=self._fonts["body"],
                              anchor="w").grid(row=0, column=0, sticky="w")
                 if sub:
-                    ctk.CTkLabel(cell, text=sub, font=self._fonts["table_body"],
+                    ctk.CTkLabel(cell, text=sub, font=self._fonts["detail_sub"],
                                  text_color=("gray30", "gray70"), anchor="w").grid(
                         row=1, column=0, sticky="w", padx=(26, 0))
 
             ctk.CTkLabel(dialog,
                          text="Umbenannt wird nur der Datenpunktname. Ansichten, Logikseiten "
                               "und Baustein-Beschriftungen behalten ihre eigenen Namen.",
-                         font=self._fonts["table_body"], justify="left", wraplength=590,
+                         font=self._fonts["detail_sub"], justify="left", wraplength=590,
                          text_color=("gray30", "gray70")).grid(
                 row=3, column=0, padx=22, pady=(0, 6), sticky="w")
 
