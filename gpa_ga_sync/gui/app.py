@@ -2089,6 +2089,14 @@ def run_gui() -> None:
                 shown = tuple(self.tree["columns"])
             return 1 <= idx <= len(shown) and shown[idx - 1] == name
 
+        def _source_dir(self) -> Optional[str]:
+            """Ordner der geladenen GPA- (sonst ETS-)Datei als Startordner für Speichern-Dialoge."""
+            for var in (self.gpa_var, self.ets_var):
+                text = var.get().strip()
+                if text and Path(text).parent.is_dir():
+                    return str(Path(text).parent)
+            return None
+
         def on_tree_double_click(self, event) -> Optional[str]:
             region = self.tree.identify("region", event.x, event.y)
             column = self.tree.identify_column(event.x)
@@ -2096,6 +2104,13 @@ def run_gui() -> None:
             if region == "cell" and self._is_column(column, "new") and row:
                 self.start_edit_new_name(row)
                 return "break"
+            # Sonst: Doppelklick auf eine Zeile zeigt ihre Verwendungen im GPA-Projekt
+            # (nicht in den Verweise-Spalten – dort öffnet schon der Einfachklick).
+            if region == "cell" and row and not self._is_ref_column(column):
+                c = self.candidates[int(row)]
+                if self._refs_for(c) is not None:
+                    self._open_xref_popup(c)
+                    return "break"
             return None
 
         def edit_focused_new_name(self) -> None:
@@ -2714,6 +2729,7 @@ def run_gui() -> None:
             path = filedialog.asksaveasfilename(
                 defaultextension=".csv",
                 filetypes=[("CSV", "*.csv")],
+                initialdir=self._source_dir(),
                 initialfile="gpa_sync_pruefliste.csv")
             if not path:
                 return
@@ -2771,6 +2787,8 @@ def run_gui() -> None:
             out = filedialog.asksaveasfilename(
                 defaultextension=".gpa",
                 filetypes=[("GPA-Projekt", "*.gpa")],
+                # Speichern startet im Ordner des importierten GPA-Projekts.
+                initialdir=str(input_gpa.parent),
                 initialfile=input_gpa.stem + "_GA_SYNC.gpa")
             if not out:
                 return
