@@ -1964,7 +1964,7 @@ def run_gui() -> None:
                 body_label.grid(row=r + 1, column=1, sticky="w", pady=(0, 12))
                 self._guide_bodies.append(body_label)
             self._guide_footer = ctk.CTkLabel(
-                guide, text="Dateien oben ablegen oder über die Knöpfe auswählen.",
+                guide, text="Dateien oben in ein Feld ziehen oder das Feld anklicken.",
                 font=self._fonts["body"], text_color=muted, fg_color=bg)
             self._guide_footer.grid(row=4, column=0, columnspan=2, pady=(2, 0))
             return guide
