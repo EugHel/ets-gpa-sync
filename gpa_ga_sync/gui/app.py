@@ -777,87 +777,107 @@ def run_gui() -> None:
                        sticky=sticky, padx=padx, pady=pady)
             return frame
 
-        def _build_upload_box(self, parent, title: str, drop_text: str,
-                               var: tk.StringVar, button_text: str,
-                               command) -> ctk.CTkFrame:
-            card = self._card(parent, 0, 0)
-            card.columnconfigure(0, weight=1)
+        def _build_file_slot(self, parent, column: int, caption: str, empty_text: str,
+                             var: tk.StringVar, command, padx) -> ctk.CTkFrame:
+            """Ein Datei-Feld: ablegen ODER anklicken zum Auswählen (kein Extra-Knopf).
 
-            ctk.CTkLabel(card, text=title,
-                         font=self._fonts["subheader"],
-                         anchor="w").grid(row=0, column=0, sticky="w", padx=12, pady=(8, 4))
+            Leer: grauer Rahmen, Upload-Symbol und Hinweistext. Geladen: grüner Rahmen,
+            Häkchen, Dateiname und ✕ zum Entfernen. Der volle Pfad steht im Tooltip.
+            """
+            slot = ctk.CTkFrame(parent, corner_radius=8, border_width=2,
+                                border_color=("gray75", "gray35"),
+                                fg_color=("gray97", "gray17"), cursor="hand2")
+            slot.grid(row=1, column=column, sticky="nsew", padx=padx, pady=(0, 12))
+            slot.columnconfigure(1, weight=1)
+            icon = ctk.CTkLabel(slot, text="⬆", width=30, font=self._fonts["normal"],
+                                text_color=("gray45", "gray60"))
+            icon.grid(row=0, column=0, rowspan=2, padx=(12, 8), pady=8)
+            cap = ctk.CTkLabel(slot, text=caption, font=self._fonts["detail_sub"],
+                               text_color=("gray35", "gray65"), anchor="w", height=16)
+            cap.grid(row=0, column=1, sticky="sw", pady=(8, 0))
+            name = ctk.CTkLabel(slot, text=empty_text, font=self._fonts["body"],
+                                text_color=("gray45", "gray60"), anchor="w", height=20)
+            name.grid(row=1, column=1, sticky="nw", pady=(0, 8))
+            clear = ctk.CTkLabel(slot, text="✕", width=28, font=self._fonts["body"],
+                                 text_color=("gray40", "gray60"), cursor="hand2")
+            clear.bind("<Button-1>", lambda _e: (var.set(""), "break")[1])
+            _Tooltip(clear, "Datei entfernen")
 
-            # Keine feste height= und kein grid_propagate(False) → Container wächst bei
-            # hoher DPI-Skalierung mit dem Text mit (verhindert abgeschnittene Texte).
-            drop_zone = ctk.CTkFrame(card, corner_radius=6, border_width=1,
-                                     border_color=(ACCENT_DARK, ACCENT),
-                                     fg_color=("gray96", "gray18"))
-            drop_zone.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 4))
-            drop_zone.columnconfigure(0, weight=1)
-            ctk.CTkLabel(drop_zone, text=drop_text,
-                         text_color=("gray45", "gray60"),
-                         font=self._fonts["body"],
-                         anchor="center",
-                         wraplength=200).grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+            hover = {"on": False}
 
-            _path_display = tk.StringVar()
-            var.trace_add("write", lambda *_: _path_display.set(
-                _truncate_path_middle(var.get())))
-            _path_lbl = ctk.CTkLabel(card, textvariable=_path_display,
-                                     text_color=("gray35", "gray65"),
-                                     font=self._fonts["body"],
-                                     anchor="w")
-            _path_lbl.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
-            _Tooltip(_path_lbl, lambda v=var: v.get() or "")
+            def paint(*_):
+                path = var.get().strip()
+                loaded = bool(path)
+                if loaded:
+                    full = Path(path).name
+                    # Lange Dateinamen in der Mitte kürzen, Endung bleibt sichtbar.
+                    shown = full if len(full) <= 46 else f"{full[:28]}…{full[-16:]}"
+                    name.configure(text=shown, text_color=("gray10", "gray90"))
+                    icon.configure(text="✓", text_color=(ACCENT_DARK, ACCENT))
+                    clear.grid(row=0, column=2, rowspan=2, padx=(4, 8))
+                else:
+                    name.configure(text=empty_text, text_color=("gray45", "gray60"))
+                    icon.configure(text="⬆", text_color=("gray45", "gray60"))
+                    clear.grid_remove()
+                if loaded:
+                    border = (ACCENT_DARK, ACCENT)
+                elif hover["on"]:
+                    border = ("gray55", "gray55")
+                else:
+                    border = ("gray75", "gray35")
+                slot.configure(border_color=border)
 
-            ctk.CTkButton(card, text=button_text,
-                          fg_color="transparent", border_width=1,
-                          border_color=("gray60", "gray45"),
-                          text_color=("gray15", "gray85"),
-                          hover_color=("gray88", "gray25"),
-                          font=self._fonts["body_bold"],
-                          command=command).grid(
-                row=3, column=0, sticky="ew", padx=12, pady=(0, 10))
+            def set_hover(on: bool) -> None:
+                if not on:
+                    # Leave beim Wechsel auf ein Kind-Label ignorieren (sonst Flackern).
+                    under = self.winfo_containing(*self.winfo_pointerxy())
+                    while under is not None:
+                        if under is slot:
+                            return
+                        under = under.master
+                hover["on"] = on
+                paint()
 
-            return drop_zone
+            for w in (slot, icon, cap, name):
+                w.bind("<Button-1>", lambda _e: command(), add="+")
+                w.bind("<Enter>", lambda _e: set_hover(True), add="+")
+                w.bind("<Leave>", lambda _e: set_hover(False), add="+")
+                try:
+                    w.configure(cursor="hand2")
+                except Exception:  # pragma: no cover
+                    pass
+            var.trace_add("write", paint)
+            _Tooltip(slot, lambda: var.get() or "Datei hier ablegen oder klicken zum Auswählen.")
+            paint()
+            return slot
 
         def _build_import_top(self, parent) -> None:
+            """Datenquellen als kompakte Dateileiste: GPA | ETS (optional) | Analysieren."""
             box = self._card(parent, 0, pady=(0, 8))
-            box.columnconfigure(0, weight=1)
-            box.columnconfigure(1, weight=1)
-            box.columnconfigure(2, weight=0, minsize=160)
+            box.columnconfigure(0, weight=1, uniform="slot")
+            box.columnconfigure(1, weight=1, uniform="slot")
+            box.columnconfigure(2, weight=0)
 
             ctk.CTkLabel(box, text="Datenquellen importieren",
                          font=self._fonts["normal"],
                          anchor="w").grid(row=0, column=0, columnspan=3,
-                                          sticky="w", padx=14, pady=(10, 4))
+                                          sticky="w", padx=14, pady=(10, 6))
 
-            gpa_holder = ctk.CTkFrame(box, corner_radius=0, fg_color="transparent")
-            gpa_holder.grid(row=1, column=0, sticky="nsew", padx=(14, 8), pady=(0, 10))
-            gpa_holder.columnconfigure(0, weight=1)
-            self.gpa_drop = self._build_upload_box(
-                gpa_holder, "GPA-Projekt",
-                "☁  .gpa hier ablegen",
-                self.gpa_var, ".gpa auswählen…", self.pick_gpa)
+            self.gpa_drop = self._build_file_slot(
+                box, 0, "GPA-Projekt", ".gpa ablegen oder klicken",
+                self.gpa_var, self.pick_gpa, padx=(14, 8))
+            self.ets_drop = self._build_file_slot(
+                box, 1, "ETS-Datei (optional, für den Namensabgleich)",
+                ".xml / .knxproj ablegen oder klicken",
+                self.ets_var, self.pick_ets, padx=(0, 8))
 
-            ets_holder = ctk.CTkFrame(box, corner_radius=0, fg_color="transparent")
-            ets_holder.grid(row=1, column=1, sticky="nsew", padx=(0, 8), pady=(0, 10))
-            ets_holder.columnconfigure(0, weight=1)
-            self.ets_drop = self._build_upload_box(
-                ets_holder, "ETS-Gruppenadressen",
-                "☁  .xml/.knxproj hier ablegen",
-                self.ets_var, ".xml/.knxproj wählen…", self.pick_ets)
-
-            action = ctk.CTkFrame(box, corner_radius=0, fg_color="transparent")
-            action.grid(row=1, column=2, sticky="sew", padx=(0, 14), pady=(0, 10))
-            action.columnconfigure(0, weight=1)
             self.analyze_button = ctk.CTkButton(
-                action, text="Analysieren",
+                box, text="Analysieren",
                 fg_color=ACCENT, hover_color=ACCENT_DARK,
                 text_color="white",
                 font=self._fonts["body_bold"],
-                width=140, height=30, command=self.analyze)
-            self.analyze_button.grid(row=0, column=0, sticky="ew")
+                width=150, command=self.analyze)
+            self.analyze_button.grid(row=1, column=2, sticky="nsew", padx=(0, 14), pady=(0, 12))
 
         # Anzahl KPI-Plätze; je nach Modus werden 5 oder 6 davon gezeigt.
         _KPI_SLOTS = 6
@@ -1317,12 +1337,9 @@ def run_gui() -> None:
 
         def _register_tooltips(self) -> None:
             T = _Tooltip
-            T(self.gpa_drop,
-              "GPA-Projektdatei (.gpa) per Drag & Drop ablegen\noder über den Button auswählen.")
-            T(self.ets_drop,
-              "ETS-Gruppenadressen-Export (.xml) oder ETS-Projekt (.knxproj)\nper Drag & Drop ablegen oder über den Button auswählen.")
             T(self.analyze_button,
-              "Vergleicht GPA-Datenpunkte mit ETS-Gruppenadressen\nund listet alle Unterschiede in der Tabelle auf.")
+              "Nur GPA: zeigt, wo jeder Datenpunkt verwendet wird.\n"
+              "GPA + ETS: listet zusätzlich alle Namensunterschiede.")
             T(self.select_all_button,
               "Markiert alle aktuell sichtbaren Zeilen\nfür die Synchronisation.")
             T(self.deselect_all_button,
