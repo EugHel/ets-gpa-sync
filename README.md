@@ -1,6 +1,7 @@
 # ETS GPA Sync
 
-> Synchronisiere Gruppenadressen-Namen zwischen **KNX ETS** und **Gira GPA** — schnell, sicher, kostenlos.
+> Synchronisiere Gruppenadressen-Namen zwischen **KNX ETS** und **Gira GPA** — und sieh auf einen
+> Blick, wo jeder Datenpunkt im GPA-Projekt verwendet wird. Schnell, sicher, kostenlos.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Built with Python](https://img.shields.io/badge/built%20with-Python%203.14-blue.svg)](https://www.python.org/)
@@ -23,7 +24,7 @@
 
 ## 🚧 Status: Beta
 
-Eine erste Beta-Version (**v0.9.1-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) mit Code-Signing ist in Vorbereitung.
+Die aktuelle Beta-Version (**v0.10.0-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) ist in Vorbereitung.
 
 ---
 
@@ -33,17 +34,20 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** nutzt, kenn
 
 **ETS GPA Sync** automatisiert genau diesen Abgleich — du entscheidest pro Gruppenadresse, was übernommen wird. Das Original bleibt immer unverändert.
 
+Außerdem zeigt es, **wo jeder Datenpunkt im GPA-Projekt verwendet wird** — in Visu-Ansichten (mit Raum), in der Logik und in Zeitschaltuhren. Die GPA selbst bietet diese Übersicht nicht. So findest du auch Datenpunkte, die nirgends mehr verwendet werden.
+
 ---
 
 ## ✨ Hauptfunktionen
 
-- ✅ **Drag & Drop** für `.gpa` und ETS-Exporte (`.xml` / `.knxproj`)
-- ✅ **Passwortgeschützte ETS-Projekte** werden unterstützt
-- ✅ **Tabellarischer Vergleich** mit Filter- und Suchfunktion
+- ✅ **Drag & Drop** für `.gpa` und ETS-Dateien (`.xml`-Export / `.knxproj`)
+- ✅ **Passwortgeschützte ETS-Projekte** und verschlüsselte GPA-Archive werden unterstützt
+- ✅ **Tabellarischer Vergleich** mit Suche und Filtern per Klick auf die Kennzahlen
 - ✅ **Selektive Synchronisation** — pro Gruppenadresse einzeln entscheiden
 - ✅ **Dark & Light Mode** mit anpassbaren Schriftgrößen
-- ✅ **GPA-Verweise** — wo wird ein Datenpunkt verwendet? Visu-Ansichten (mit Raum und
-  Benutzern), Logikeditor und Zeitschaltuhren; Filter für ungenutzte Datenpunkte
+- ✅ **GPA-Prüfansicht** — nur die `.gpa` laden: wo wird jeder Datenpunkt verwendet?
+  Visu-Ansichten (mit Raum und Benutzern), Logikeditor und Zeitschaltuhren; Filter für
+  ungenutzte Datenpunkte
 - ✅ **Auswirkungsprüfung** vor dem Synchronisieren
 - ✅ **CSV-Export** für Dokumentation und Audit (inkl. Verweise)
 
@@ -57,7 +61,7 @@ Wer KNX-Projekte mit der **ETS** plant und parallel die **Gira GPA** nutzt, kenn
 
 ## 📥 Download
 
-**[⬇️ ETS GPA Sync v0.9.1-beta herunterladen](https://github.com/EugHel/ets-gpa-sync/releases/tag/v0.9.1-beta)**
+**[⬇️ ETS GPA Sync herunterladen (neueste Version)](https://github.com/EugHel/ets-gpa-sync/releases/latest)**
 
 ZIP entpacken → `ETS-GPA-Sync.exe` starten. Kein Python erforderlich.
 Getestet auf Windows 10 und 11.
@@ -69,12 +73,16 @@ Getestet auf Windows 10 und 11.
 ## 🚀 Quick Start
 
 1. **Herunterladen** → ZIP entpacken → `.exe` starten
-2. **GPA-Projekt** per Drag & Drop oder Button einfügen
-3. **ETS-Export** (`.xml` / `.knxproj`) einfügen
-4. **"Analysieren"** klicken
-5. **Änderungen auswählen** → **"Synchronisieren"**
+2. **GPA-Projekt** ins linke Feld ziehen (oder das Feld anklicken)
 
-Fertig. Eine neue `.gpa`-Datei wird erzeugt — das Original bleibt unverändert.
+**Nur prüfen:** „Analysieren“ klicken — die Tabelle zeigt alle Datenpunkte mit Raum und
+Verwendungen. Am Projekt wird nichts verändert.
+
+**Namen aus der ETS übernehmen:**
+
+3. **ETS-Datei** (`.xml`-Export oder `.knxproj`) ins rechte Feld ziehen
+4. **„Analysieren“** klicken und die Änderungen prüfen
+5. **„Synchronisieren“** — es entsteht eine neue `.gpa`-Datei, das Original bleibt unverändert.
 
 ---
 

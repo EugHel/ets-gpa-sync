@@ -19,13 +19,13 @@
 
 ## 🚧 In Arbeit (auf dem Weg zu v1.0.0)
 
-* 🚧 **Packaging**: Signierte Windows-.exe (PyInstaller + Code-Signing)
 * 🚧 **Erweiterte Dokumentation**: Benutzerhandbuch
 * 🚧 **Demo-Video**: Kurz-Tutorial der Hauptfunktionen
 
 ## 🔮 Geplant (v1.x)
 
 * Auto-Update-Mechanismus
+* Code-Signing der Windows-.exe (bei Bedarf)
 * Checkbox für alle Gruppenadressen auflisten
 * Verbesserte Konflikt-Auflösung bei Sync-Problemen
 

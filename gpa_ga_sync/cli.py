@@ -20,7 +20,7 @@ from .log import setup_logging
 def run_cli(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=f"GPA-Datenpunktnamen mit ETS-Gruppenadressnamen synchronisieren ({APP_VERSION})")
     parser.add_argument("--gpa", required=True, help="Pfad zur GPA-Datei")
-    parser.add_argument("--ets", required=True, help="Pfad zum ETS-Gruppenadress-Export XML")
+    parser.add_argument("--ets", required=True, help="Pfad zur ETS-Datei (Gruppenadress-Export .xml oder Projekt .knxproj)")
     parser.add_argument("--out", help="Ausgabedatei .gpa")
     parser.add_argument("--password", default=None, help="ZIP-Passwort, falls GPA-Archiv verschlüsselt ist")
     parser.add_argument("--ets-password", default=None, help="ETS-Projektpasswort, falls .knxproj verschlüsselt ist")

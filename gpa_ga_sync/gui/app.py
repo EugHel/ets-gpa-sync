@@ -162,8 +162,9 @@ class _Tooltip:
         tk.Label(
             self._win, text=self._get_text(),
             background="#2c2c2e", foreground="#f0f0f0",
-            relief="flat", padx=10, pady=6,
-            font=TTK_BODY, justify="left", wraplength=300,
+            relief="flat", padx=8, pady=5,
+            # Tabellenschrift (10 pt) statt Fließtext – passt zu den übrigen Größen.
+            font=TTK_TABLE_BODY, justify="left", wraplength=360,
         ).pack()
 
     def _hide(self) -> None:
@@ -238,7 +239,7 @@ def run_gui() -> None:
             self.pwd_var = tk.StringVar()
             self.filter_var = tk.StringVar()
             self.status_var = tk.StringVar(
-                value="Bereit. GPA-Projekt und/oder ETS-XML auswählen, dann analysieren."
+                value="Bereit. GPA-Projekt laden (ETS-Datei optional) und „Analysieren“ klicken."
             )
             self.detail_vars = {
                 "status": tk.StringVar(value="-"),
@@ -1276,7 +1277,7 @@ def run_gui() -> None:
                 form, text="", font=self._fonts["detail_sub"], justify="left",
                 text_color=("gray30", "gray70"), anchor="w", wraplength=260, height=20)
             self.detail_ga_roles.grid(row=5, column=0, sticky="ew", pady=(2, 0))
-            add_field("Quelle",                "source", row=6)
+            add_field("Zuordnung über",        "source", row=6)
             add_field("Aktueller GPA-Name",      "old",    row=8)
             self.detail_new_entry = add_field("Neuer GPA-Name aus ETS (editierbar)", "new",
                                               readonly=False, row=10)
@@ -1324,7 +1325,7 @@ def run_gui() -> None:
 
             self._hint_label = tk.Label(
                 footer,
-                text="Bearbeiten: Doppelklick/F2 | Kopieren: Rechtsklick / Strg+C",
+                text=self._footer_hint(),
                 bg=p["bg"], fg=p["muted"], font=TTK_SMALL)
             self._hint_label.grid(row=0, column=2, sticky="e", padx=12, pady=5)
 
@@ -1345,7 +1346,7 @@ def run_gui() -> None:
             T(self.deselect_all_button,
               "Entfernt die Markierung aller aktuell sichtbaren Zeilen.")
             T(self.csv_button,
-              "Exportiert die angezeigte Tabelle als CSV-Datei.")
+              "Speichert die angezeigten Zeilen (inkl. Raum und Verwendungen)\nals CSV-Datei, z. B. für Excel.")
             T(self._search_frame,
               "Filtert die Tabelle in Echtzeit.\nDurchsucht GA, Namen, Status, Raum,\n"
               "Visu-Ansichten und Logikseiten.")
@@ -1509,37 +1510,33 @@ def run_gui() -> None:
         def show_help(self) -> None:
             self._center_dialog("Hilfe – ETS GPA Sync")
             messagebox.showinfo("Hilfe – ETS GPA Sync",
-                'Zweck:\n'
-                'Dieses Tool übernimmt Gruppenadressnamen aus einem ETS-Export in ein GPA-Projekt. '
-                'Synchronisiert wird nur in Richtung ETS → GPA.\n\n'
-                'Ablauf:\n'
-                '1. GPA-Projekt (.gpa) ablegen oder auswählen.\n'
-                '2. ETS-Gruppenadressen-Export (.xml) oder ETS-Projekt (.knxproj) ablegen oder auswählen.\n'
-                '3. Auf „Analysieren“ klicken.\n'
-                '4. Änderungen prüfen und bei Bedarf einzelne Zeilen abwählen.\n'
-                '5. Mit „Synchronisieren“ eine neue GPA-Datei erzeugen.\n\n'
-                'Wichtig:\n'
-                'Das Originalprojekt wird nicht verändert. Im GPA-Projekt wird nur der sichtbare '
-                'Datenpunktname geändert. LogicalName und Gruppenadressen bleiben unverändert.\n\n'
-                'Hinweise:\n'
-                '• Mit Doppelklick oder F2 kann der neue GPA-Name direkt in der Liste bearbeitet werden.\n'
-                '• Mit Rechtsklick oder Strg+C können markierte Zeilen nach Excel kopiert werden.\n'
-                '• Wenn nur eine Datei geladen ist, wird trotzdem eine reine Kontrollliste angezeigt.\n'
-                '• .knxproj-Dateien können ein ETS-Projektpasswort benötigen.\n'
-                '• Reine Leerzeichen-Unterschiede werden als „Leerzeichen“ markiert.\n'
-                '• GPA-Adressen ohne Treffer im ETS-Export werden als „Nicht in ETS“ angezeigt.\n'
-                '• Mehrere GPA-Datenpunkte mit identischer Gruppenadresse werden als „Adress-Konflikt“ '
-                'angezeigt und nicht automatisch umbenannt – bitte prüfen.\n\n'
-                'GPA-Verweise:\n'
-                'Die Spalten „Visu“, „Logik“ und „Uhr“ zeigen, wo ein Datenpunkt im GPA-Projekt '
-                'verwendet wird: in Visu-Ansichten, als Baustein im Logikeditor oder durch eine '
-                'Zeitschaltuhr. Ein Klick auf eine Zahl öffnet die Details (Standort, Logikseite, '
-                'Schaltzeiten, sichtbar für welche Benutzer). Die Spalte „Raum“ zeigt den Standort '
-                'der Visu-Ansicht. Mit dem Filter „Ungenutzt“ findest du Datenpunkte, die nirgends '
-                'verwendet werden.\n\n'
-                'GPA-Prüfansicht:\n'
-                'Wird nur ein GPA-Projekt analysiert, blendet das Tool die ETS-Spalten aus. Die '
-                'Kennzahlen „Verwendet“, „In Logik“ und „Ungenutzt“ filtern per Klick die Tabelle.')
+                'Zwei Möglichkeiten:\n\n'
+                '1. Prüfansicht – nur GPA-Projekt laden, „Analysieren“\n'
+                'Zeigt für jeden Datenpunkt, wo er im GPA-Projekt verwendet wird: in Visu-Ansichten '
+                '(mit Raum und sichtbaren Benutzern), als Baustein in der Logik oder durch eine '
+                'Zeitschaltuhr. Am Projekt wird nichts verändert.\n\n'
+                '2. Namensabgleich – GPA-Projekt und ETS-Datei (.xml-Export oder .knxproj) laden, '
+                '„Analysieren“, dann „Synchronisieren“\n'
+                'Übernimmt Gruppenadress-Namen aus der ETS in die GPA (nur Richtung ETS → GPA). '
+                'Gespeichert wird eine neue .gpa-Datei; das Original bleibt unverändert. Geändert '
+                'wird nur der sichtbare Datenpunktname, Gruppenadressen bleiben gleich.\n\n'
+                'Bedienung:\n'
+                '• Die Kennzahlen oben filtern per Klick die Tabelle (erneuter Klick oder Klick '
+                'auf „GPA-Datenpunkte“ hebt den Filter auf). „Ungenutzt“ findet Datenpunkte, '
+                'die nirgends verwendet werden.\n'
+                '• Klick auf eine Zahl in „Visu“, „Logik“ oder „Uhr“ bzw. Doppelklick auf eine '
+                'Zeile öffnet die Verwendungen des Datenpunkts.\n'
+                '• Neuen Namen bearbeiten: Doppelklick auf „Neuer GPA-Name“ oder F2.\n'
+                '• Rechtsklick oder Strg+C kopiert markierte Zeilen für Excel.\n\n'
+                'Status beim Namensabgleich:\n'
+                '• „Änderung“ – Name weicht von der ETS ab und wird übernommen.\n'
+                '• „Leerzeichen“ – nur Leerzeichen unterscheiden sich.\n'
+                '• „Nicht in ETS“ – die Gruppenadresse gibt es in der ETS nicht.\n'
+                '• „Mehrdeutig“ – mehrere ETS-Namen passen; bitte selbst entscheiden.\n'
+                '• „Adress-Konflikt“ – mehrere GPA-Datenpunkte senden auf dieselbe Adresse; '
+                'sie werden nicht automatisch umbenannt.\n\n'
+                'Passwörter: Verschlüsselte .gpa-Archive und passwortgeschützte .knxproj-Projekte '
+                'werden unterstützt – das Passwort wird bei Bedarf abgefragt.')
 
         # ── Status / KPIs ──────────────────────────────────────────────────────
 
@@ -1567,6 +1564,13 @@ def run_gui() -> None:
             self._render_kpis()
 
         # ── Ansichtsmodus: ETS-Vergleich vs. GPA-Prüfansicht ───────────────────
+
+        def _footer_hint(self) -> str:
+            """Bedienhinweis in der Fußzeile, passend zum Modus."""
+            if getattr(self, "_gpa_only", False):
+                return "Doppelklick: Verwendungen  ·  Rechtsklick / Strg+C: kopieren"
+            return ("F2: neuen Namen bearbeiten  ·  Doppelklick: Verwendungen  ·  "
+                    "Rechtsklick / Strg+C: kopieren")
 
         def _show_detail_fields(self, has_selection: bool) -> None:
             """Panel-Felder ein-/ausblenden: ohne Auswahl nur der Hinweis im Verweise-
@@ -1620,6 +1624,8 @@ def run_gui() -> None:
                 widget = getattr(self, name)
                 widget.grid_remove() if gpa_only else widget.grid()
             self._show_detail_fields(bool(self.tree.selection()))
+            if hasattr(self, "_hint_label"):
+                self._hint_label.configure(text=self._footer_hint())
             self.after_idle(self._fit_columns)
 
             self._render_kpis()
@@ -1770,6 +1776,11 @@ def run_gui() -> None:
             self.datapoint_name_by_path = {dp.zip_path: dp.entity_name for dp in datapoints}
             self.datapoint_by_path = {dp.zip_path: dp for dp in datapoints}
             self.references = references or {}
+            # Stand der Analyse: Synchronisieren nur mit genau diesen Dateien, und die
+            # Abschlussprüfung nutzt die bereits gelesenen ETS-Daten (auch bei .knxproj
+            # mit Projektpasswort).
+            self._analyzed_gpa = self.gpa_var.get().strip()
+            self._analyzed_ets_map = dict(ets_map)
             self._gpa_only = bool(datapoints) and not ets_map
             self._default_users = most_common_users(self.references)
             # Suchtext je Datenpunkt: Ansichten, Standorte, Logikseiten, Zeitschaltuhren.
@@ -2154,7 +2165,7 @@ def run_gui() -> None:
                 return
             x, y, w, h = bbox
             p = self._p
-            entry = tk.Entry(self.tree, font=TTK_BODY, bd=1, relief="solid",
+            entry = tk.Entry(self.tree, font=TTK_TABLE_BODY, bd=1, relief="solid",
                              bg=p["entry_bg"], fg=p["text"], insertbackground=p["text"])
             entry.insert(0, c.new_name)
             entry.select_range(0, "end")
@@ -2741,7 +2752,7 @@ def run_gui() -> None:
         def save_csv(self) -> None:
             if not self.candidates:
                 self._center_dialog("Hinweis")
-                messagebox.showinfo("Hinweis", "Bitte zuerst auf 'Analysieren' klicken.")
+                messagebox.showinfo("Hinweis", "Bitte zuerst „Analysieren“ klicken.")
                 return
             path = filedialog.asksaveasfilename(
                 defaultextension=".csv",
@@ -2751,9 +2762,10 @@ def run_gui() -> None:
             if not path:
                 return
             try:
-                export_candidates_csv(self.candidates, Path(path),
-                                      references=self.references or None)
-                self.status_var.set(f"CSV gespeichert: {path}")
+                rows = [self.candidates[int(i)] for i in self.visible_iids]
+                export_candidates_csv(rows, Path(path), references=self.references or None)
+                count = "1 Zeile" if len(rows) == 1 else f"{len(rows)} Zeilen"
+                self.status_var.set(f"CSV gespeichert ({count}): {path}")
             except Exception as e:
                 self._center_dialog("Fehler beim CSV-Export")
                 messagebox.showerror("Fehler beim CSV-Export", str(e))
@@ -2797,10 +2809,19 @@ def run_gui() -> None:
                         if c.selected and c.status in (SyncStatus.AENDERUNG, SyncStatus.LEERZEICHEN)]
             if not self._validate_selected_names():
                 return
+            current_gpa = self.gpa_var.get().strip()
+            if not current_gpa or current_gpa != getattr(self, "_analyzed_gpa", ""):
+                self._center_dialog("Erneut analysieren")
+                messagebox.showwarning(
+                    "Erneut analysieren",
+                    "Die GPA-Datei wurde nach der Analyse geändert oder entfernt.\n\n"
+                    "Bitte die gewünschte GPA-Datei laden und erneut „Analysieren“ klicken, "
+                    "damit die Änderungen zur richtigen Datei passen.")
+                return
             if not self._confirm_sync_impact(selected):
                 self.status_var.set("Synchronisierung abgebrochen.")
                 return
-            input_gpa = Path(self.gpa_var.get())
+            input_gpa = Path(current_gpa)
             out = filedialog.asksaveasfilename(
                 defaultextension=".gpa",
                 filetypes=[("GPA-Projekt", "*.gpa")],
@@ -2814,7 +2835,7 @@ def run_gui() -> None:
                 return
 
             pwd = self._pwd()
-            ets_path_str = self.ets_var.get().strip()
+            ets_map = dict(getattr(self, "_analyzed_ets_map", {}))
             self._set_busy(True)
             self.status_var.set("Synchronisierung läuft …")
 
@@ -2822,19 +2843,17 @@ def run_gui() -> None:
                 try:
                     changed = write_updated_gpa(input_gpa, Path(out), selected, pwd)
                     try:
-                        ets_map: Dict[int, EtsGroupAddress] = {}
-                        if ets_path_str:
-                            try:
-                                ets_map = parse_ets_ga_export(Path(ets_path_str))
-                            except Exception:
-                                ets_map = {}
                         out_datapoints = parse_gpa_datapoints(Path(out), pwd)
                         remaining = build_sync_candidates(out_datapoints, ets_map)
                         remaining_changes = sum(
                             1 for c in remaining
                             if c.status in (SyncStatus.AENDERUNG, SyncStatus.LEERZEICHEN))
-                        check_text = (f"\n\nAbschlussprüfung: "
-                                      f"{remaining_changes} eindeutige Unterschiede verbleiben.")
+                        if remaining_changes == 0:
+                            check_text = ("\n\nAbschlussprüfung: Alle eindeutig zuordenbaren "
+                                          "Namen stimmen jetzt mit der ETS überein.")
+                        else:
+                            check_text = (f"\n\nAbschlussprüfung: {remaining_changes} eindeutige "
+                                          "Unterschiede verbleiben (nicht ausgewählte Zeilen).")
                     except Exception:
                         check_text = "\n\nAbschlussprüfung konnte nicht ausgeführt werden."
                     self.after(0, lambda: self._sync_done(changed, out, check_text))
@@ -2843,10 +2862,14 @@ def run_gui() -> None:
 
             threading.Thread(target=worker, daemon=True).start()
 
+        @staticmethod
+        def _n_datapoints(count: int) -> str:
+            return "1 Datenpunkt" if count == 1 else f"{count} Datenpunkte"
+
         def _sync_done(self, changed: int, out: str, check_text: str) -> None:
             _log.info("Synchronisierung abgeschlossen: %d Datenpunkte geändert -> %s", changed, out)
             self._set_busy(False)
-            self.status_var.set(f"Fertig: {changed} Datenpunkte geändert. Neue Datei: {out}")
+            self.status_var.set(f"Fertig: {self._n_datapoints(changed)} geändert. Neue Datei: {out}")
             self._show_sync_done_dialog(changed, out, check_text)
 
         def _show_sync_done_dialog(self, changed: int, out: str, check_text: str) -> None:
@@ -2868,7 +2891,7 @@ def run_gui() -> None:
                          font=self._fonts["normal"]).grid(
                 row=0, column=0, padx=24, pady=(20, 8), sticky="w")
 
-            ctk.CTkLabel(dialog, text=f"{changed} Datenpunkte geändert.",
+            ctk.CTkLabel(dialog, text=f"{self._n_datapoints(changed)} geändert.",
                          font=self._fonts["body_bold"], justify="left",
                          wraplength=WRAP).grid(
                 row=1, column=0, padx=24, pady=(0, 8), sticky="w")
@@ -2885,7 +2908,7 @@ def run_gui() -> None:
                              wraplength=WRAP).grid(
                     row=3, column=0, padx=24, pady=(0, 8), sticky="w")
 
-            ctk.CTkLabel(dialog, text="Bitte zuerst als Kopie im GPA öffnen und prüfen.",
+            ctk.CTkLabel(dialog, text="Bitte die neue Datei im GPA öffnen und prüfen, bevor du sie auf den Server überträgst.",
                          font=self._fonts["body"], justify="left",
                          wraplength=WRAP).grid(
                 row=4, column=0, padx=24, pady=(0, 14), sticky="w")
