@@ -40,7 +40,8 @@ from ..core import (
     summarize_sync_impact,
     write_updated_gpa,
 )
-from ..config import LICENSING_ENABLED, APP_VERSION, channel_type_display_name
+from ..config import LICENSING_ENABLED, APP_VERSION, UPDATE_CHECK_ENABLED, channel_type_display_name
+from ..core.update import UpdateInfo, check_for_update
 from ..licensing import (
     LicenseManager, LicenseStatus, LicenseStorage, TrialManager,
     NullProvider, get_machine_id,
@@ -301,6 +302,7 @@ def run_gui() -> None:
             self._register_tooltips()
             if LICENSING_ENABLED:
                 self._update_license_ui()
+            self.after(1500, self._start_update_check)
 
         @property
         def _p(self) -> Dict[str, str]:
@@ -311,7 +313,9 @@ def run_gui() -> None:
         def _toggle_theme(self) -> None:
             self._theme_mode = "light" if self._theme_mode == "dark" else "dark"
             ctk.set_appearance_mode(self._theme_mode)
-            _save_config({"theme": self._theme_mode})
+            cfg = _load_config()
+            cfg["theme"] = self._theme_mode
+            _save_config(cfg)
             self._apply_tree_style()
             self._refresh_legacy_widgets()
 
@@ -487,6 +491,15 @@ def run_gui() -> None:
                          font=self._fonts["large"]).grid(
                 row=0, column=1, padx=(0, 4), sticky="w")
 
+            # Update-Hinweis: erscheint nur, wenn auf GitHub eine neuere Version liegt.
+            self._update_button = ctk.CTkButton(
+                toolbar, text="", height=28, corner_radius=14,
+                fg_color="transparent", border_width=1,
+                border_color=(ACCENT_DARK, ACCENT), text_color=(ACCENT_DARK, ACCENT),
+                hover_color=("gray85", "gray25"), font=self._fonts["body"],
+                command=self._open_update_page)
+            self._update_info: Optional[UpdateInfo] = None
+
             # Lizenz-Status-Indikator (klickbar, öffnet Lizenz-Dialog)
             # Nur sichtbar wenn LICENSING_ENABLED == True (config.py)
             if LICENSING_ENABLED:
@@ -525,6 +538,39 @@ def run_gui() -> None:
                           hover_color=("gray85", "gray25"),
                           command=self.show_help).grid(
                 row=0, column=7, padx=(0, 12), sticky="e")
+
+        # ── Update-Hinweis ─────────────────────────────────────────────────────
+
+        def _start_update_check(self) -> None:
+            """Fragt einmal beim Start im Hintergrund bei GitHub nach einer neueren Version.
+
+            Abschaltbar über UPDATE_CHECK_ENABLED (config.py) oder "update_check": false in
+            %APPDATA%\\GPA-GA-Sync\\config.json. Ohne Netz bleibt es still.
+            """
+            if not UPDATE_CHECK_ENABLED or _load_config().get("update_check", True) is False:
+                return
+
+            def worker() -> None:
+                info = check_for_update(APP_VERSION)
+                if info is not None:
+                    self.after(0, lambda: self._show_update_hint(info))
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _show_update_hint(self, info: UpdateInfo) -> None:
+            self._update_info = info
+            self._update_button.configure(text=f"  Neue Version {info.version} verfügbar ↗  ")
+            self._update_button.grid(row=0, column=2, padx=(0, 16), sticky="e")
+            _Tooltip(self._update_button,
+                     f"Installiert: {APP_VERSION}\nKlicken öffnet die Download-Seite auf GitHub.")
+            # Statuszeile nur nutzen, solange noch nichts anderes darin steht.
+            if self.status_var.get().startswith("Bereit."):
+                self.status_var.set(f"Neue Version {info.version} verfügbar – Download über den "
+                                    "Hinweis oben rechts.")
+
+        def _open_update_page(self) -> None:
+            if self._update_info is not None:
+                webbrowser.open(self._update_info.url)
 
         # ── Lizenz-System ──────────────────────────────────────────────────────
 
@@ -1536,7 +1582,10 @@ def run_gui() -> None:
                 '• „Adress-Konflikt“ – mehrere GPA-Datenpunkte senden auf dieselbe Adresse; '
                 'sie werden nicht automatisch umbenannt.\n\n'
                 'Passwörter: Verschlüsselte .gpa-Archive und passwortgeschützte .knxproj-Projekte '
-                'werden unterstützt – das Passwort wird bei Bedarf abgefragt.')
+                'werden unterstützt – das Passwort wird bei Bedarf abgefragt.\n\n'
+                'Updates: Beim Start fragt das Tool bei GitHub nach, ob es eine neuere Version '
+                'gibt, und zeigt dann oben rechts einen Hinweis. Dabei werden keine '
+                'Projektdaten übertragen.')
 
         # ── Status / KPIs ──────────────────────────────────────────────────────
 

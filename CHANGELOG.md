@@ -7,6 +7,19 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.10.1-beta] - 2026-10-06
+
+### Hinzugefügt
+- **Update-Hinweis**: Beim Start fragt das Tool einmal bei GitHub nach, ob es eine neuere
+  Version gibt, und zeigt dann oben rechts einen Hinweis mit Link zur Download-Seite.
+  Es wird nur die öffentliche Release-Liste abgerufen, keine Projektdaten übertragen;
+  ohne Internet bleibt es still. Abschaltbar mit `"update_check": false` in
+  `%APPDATA%\GPA-GA-Sync\config.json`.
+
+### Behoben
+- Das Umschalten zwischen hellem und dunklem Design überschrieb andere gespeicherte
+  Einstellungen.
+
 ## [0.10.0-beta] - 2026-10-06
 
 ### Hinzugefügt

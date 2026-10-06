@@ -10,13 +10,18 @@ können, ohne den Code zu entfernen.
 # ═══════════════════════════════════════════════════════════
 # Einzige Quelle der Wahrheit für die angezeigte Versionsnummer
 # (Fußleiste, CLI, ...). Inklusive "v"-Präfix.
-APP_VERSION = "v0.10.0-beta"
+APP_VERSION = "v0.10.1-beta"
 
 # Lizenz-Subsystem (Trial, Provider-basierte Aktivierung)
 # Aktuell DEAKTIVIERT — das Tool ist Open Source unter MIT-Lizenz.
 # Kann später reaktiviert werden für optionale "Pro Support"-Modelle.
 # Zur Aktivierung: diesen Wert auf True setzen.
 LICENSING_ENABLED = False
+
+# Update-Hinweis: beim Start einmal bei GitHub nach einer neueren Version fragen
+# (nur die öffentliche Release-Liste, keine Projektdaten). Nutzer können ihn
+# zusätzlich mit "update_check": false in %APPDATA%\GPA-GA-Sync\config.json abschalten.
+UPDATE_CHECK_ENABLED = True
 
 # ═══════════════════════════════════════════════════════════
 # GUI-SCHRIFTGRÖSSEN

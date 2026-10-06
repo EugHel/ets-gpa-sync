@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Built with Python](https://img.shields.io/badge/built%20with-Python%203.14-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-152%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-162%20passing-brightgreen.svg)](#)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#)
 
 <div align="center">
@@ -24,7 +24,7 @@
 
 ## 🚧 Status: Beta
 
-Die aktuelle Beta-Version (**v0.10.0-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) ist in Vorbereitung.
+Die aktuelle Beta-Version (**v0.10.1-beta**) ist als Windows-`.exe` verfügbar. Die erste stabile Version (**v1.0.0**) ist in Vorbereitung.
 
 ---
 
@@ -50,6 +50,7 @@ Außerdem zeigt es, **wo jeder Datenpunkt im GPA-Projekt verwendet wird** — in
   ungenutzte Datenpunkte
 - ✅ **Auswirkungsprüfung** vor dem Synchronisieren
 - ✅ **CSV-Export** für Dokumentation und Audit (inkl. Verweise)
+- ✅ **Update-Hinweis** beim Start, wenn eine neue Version verfügbar ist
 
 ---
 
@@ -67,6 +68,10 @@ ZIP entpacken → `ETS-GPA-Sync.exe` starten. Kein Python erforderlich.
 Getestet auf Windows 10 und 11.
 
 > ⚠️ Beta — bitte vor der Synchronisation Sicherheitskopien erstellen.
+
+Beim Start fragt das Tool einmal bei GitHub nach, ob es eine neuere Version gibt (nur die
+öffentliche Release-Liste, keine Projektdaten). Abschalten: `"update_check": false` in
+`%APPDATA%\GPA-GA-Sync\config.json`.
 
 ---
 

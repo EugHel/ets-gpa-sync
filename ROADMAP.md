@@ -5,7 +5,7 @@
 ## ✅ Bereits umgesetzt (v0.x — interne Versionen)
 
 * ✅ **Stabilität**: Threading für reaktionsfähige GUI während Analyse
-* ✅ **Code-Qualität**: 152 Unit-Tests mit pytest
+* ✅ **Code-Qualität**: 162 Unit-Tests mit pytest
 * ✅ **GPA-Verweise**: Verwendung jedes Datenpunkts in Visu, Logik und Zeitschaltuhren,
   Filter „Ungenutzt“, Auswirkungsprüfung vor dem Sync (v0.10.0-beta)
 * ✅ **Architektur**: Modulare Package-Struktur (`gpa_ga_sync/`)
@@ -24,7 +24,7 @@
 
 ## 🔮 Geplant (v1.x)
 
-* Auto-Update-Mechanismus
+* Automatische Aktualisierung (heute: Update-Hinweis mit Download-Link, seit v0.10.1)
 * Code-Signing der Windows-.exe (bei Bedarf)
 * Checkbox für alle Gruppenadressen auflisten
 * Verbesserte Konflikt-Auflösung bei Sync-Problemen
